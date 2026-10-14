@@ -1,0 +1,17 @@
+# Local Python environments
+.SMUvenv/
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Automated-test caches
+.pytest_cache/
+
+# Generated measurement data
+results/*
+!results/.gitkeep
+
+# Temporary Code Runner files
+tempCodeRunnerFile.py
