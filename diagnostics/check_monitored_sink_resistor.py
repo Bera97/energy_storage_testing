@@ -1,130 +1,94 @@
-"""Instrument-timed sinking and lower-voltage termination check.
+"""Validate the shared MonitoredAcquisition interface while sinking.
 
 DPS150 OUT+ -> 6.93 kOhm resistor -> CH1 FORCE HI
 DPS150 OUT- --------------------> CH1 FORCE LO
 
-DMM across CH1 terminals in DC volts.
+DMM across SMU terminals in DC volts.
 Channel 2 disconnected. No cell/capacitor.
-DPS150 output must be controlled manually.
+DPS150 output is manually controlled.
 """
 
 import logging
 import math
 import statistics
-import time
 
 from diagnostics.check_dc_resistor import (
     VISA_ADDRESS,
     checked,
     configure_channel,
 )
-from diagnostics.check_live_buffer_resistor import (
-    configure_trace,
-    query_integer,
-    retrieve_new_records,
-    write_checked,
-)
-from drivers.buffered_acquisition import (
-    BufferedAcquisition,
-    BufferedStatusError,
-)
 from drivers.dc_output import enable_dc_output
 from drivers.keysight_b2902b import KeysightB2902B
-
-
-INTERVAL_S = 0.2
-POLL_S = 0.05
-CURRENT_A = -100e-6
-VOLTAGE_LIMIT_V = 2.0
-TEST_VOLTAGE_MIN_V = 1.4
-
-
-def retrieve_retaining_faults(smu, readings, count):
-    try:
-        return retrieve_new_records(smu, readings, count)
-    except BufferedStatusError as error:
-        # parse_buffer() retains the fault-containing batch on
-        # this exception, but the retrieval helper has not appended it.
-        readings.extend(error.readings)
-        raise
-
-
-def check_operating_point(reading):
-    if (
-        reading.has_fault
-        or reading.in_compliance
-        or not reading.current_source
-        or not 1.15 <= reading.voltage_v <= 1.45
-        or not -105e-6 <= reading.current_a <= -95e-6
-        or reading.power_w >= 0
-    ):
-        raise RuntimeError(
-            f"Unexpected sink operating point: {reading!r}; "
-            f"power={reading.power_w} W."
-        )
+from drivers.monitored_acquisition import (
+    MonitoredAcquisition,
+    StopLimits,
+)
 
 
 def run_phase(smu, *, early_stop):
     count = 100 if early_stop else 20
-    label = (
-        "Monitored lower-voltage termination"
-        if early_stop
-        else "Monitored sink completion"
+    expected_reason = "voltage_min" if early_stop else "completed"
+
+    print(
+        "\n=== Shared monitored interface: "
+        f"{'early termination' if early_stop else 'completion'} ===",
+        flush=True,
     )
-
-    readings = []
-    triggering_reading = None
-    reason = None
-
-    print(f"\n=== {label} ===", flush=True)
 
     try:
         input(
-            "\nConfirm DPS150 output is OFF before configuration. "
-            "Press Enter, or Ctrl+C to cancel: "
+            "\nConfirm DPS150 output is OFF. "
+            "Press Enter to configure, Ctrl+C cancels: "
         )
 
         channel = configure_channel(smu, "CURR")
-        checked(smu, channel.set_voltage_limit, VOLTAGE_LIMIT_V)
-        checked(smu, channel.set_current, CURRENT_A)
+        checked(smu, channel.set_voltage_limit, 2.0)
+        checked(smu, channel.set_current, -100e-6)
 
-        acquisition = BufferedAcquisition(smu, channel=1)
+        acquisition = MonitoredAcquisition(smu, channel=1)
         acquisition.configure(
             count=count,
-            interval_s=INTERVAL_S,
+            interval_s=0.2,
             nplc=1.0,
         )
-        configure_trace(smu, count)
 
         current = checked(smu, channel.get_current_setpoint)
         limit = checked(smu, channel.get_voltage_limit)
 
         if not math.isclose(
-            current, CURRENT_A, rel_tol=1e-6, abs_tol=1e-12
+            current, -100e-6, rel_tol=1e-6, abs_tol=1e-12
         ):
             raise RuntimeError(
                 f"Current-setpoint mismatch: {current}"
             )
 
         if not math.isclose(
-            limit, VOLTAGE_LIMIT_V, rel_tol=1e-6, abs_tol=1e-9
+            limit, 2.0, rel_tol=1e-6, abs_tol=1e-9
         ):
             raise RuntimeError(
                 f"Voltage-compliance mismatch: {limit}"
             )
 
+        limits = StopLimits(
+            min_voltage_v=1.4 if early_stop else 1.15,
+            max_voltage_v=1.45,
+            min_current_a=-105e-6,
+            max_current_a=-95e-6,
+            stop_on_compliance=True,
+        )
+
         print(
             f"\nCurrent setpoint: {current * 1e6:.6g} uA\n"
             f"Voltage compliance: {limit:.6g} V\n"
             f"Requested records: {count}\n"
-            f"Instrument interval: {INTERVAL_S} s\n"
             "SMU outputs are still OFF.",
             flush=True,
         )
 
         input(
             "\nEnable DPS150 at 2.00 V / 10 mA.\n"
-            "Confirm DMM shows approximately +2 V with SMU OFF.\n"
+            "Confirm DMM approximately +2 V with SMU OFF.\n"
+            "Leave DPS150 at 2.00 V throughout this phase.\n"
             "If incorrect, turn DPS150 OFF and Ctrl+C.\n"
             "Otherwise press Enter to enable sinking: "
         )
@@ -136,57 +100,12 @@ def run_phase(smu, *, early_stop):
             max_current_a=0.001,
         )
 
-        started = time.monotonic()
-        deadline = started + count * INTERVAL_S + 5.0
-        write_checked(smu, ":INIT:ACQ (@1)")
-
-        while True:
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    "Monitored sink acquisition timed out."
-                )
-
-            operation = query_integer(smu, ":STAT:OPER:COND?")
-            idle = bool(operation & (1 << 4))
-
-            questionable = query_integer(
-                smu, ":STAT:QUES:COND?"
-            )
-            if questionable & (1 << 12):
-                raise RuntimeError(
-                    "Lost acquisition event reported."
-                )
-
-            new_readings = retrieve_retaining_faults(
-                smu, readings, count
-            )
-
-            # Retain the entire retrieved batch, then evaluate it.
-            # Fault/unexpected-operation checks take precedence.
-            for reading in new_readings:
-                check_operating_point(reading)
-
-            if early_stop:
-                for reading in new_readings:
-                    if reading.voltage_v <= TEST_VOLTAGE_MIN_V:
-                        triggering_reading = reading
-                        reason = "voltage_min"
-                        break
-
-            if reason is not None:
-                break
-
-            if idle:
-                reason = "completed"
-                break
-
-            time.sleep(POLL_S)
-
-        decision_elapsed = time.monotonic() - started
-
-        # Stop output before final retrieval or console reporting.
-        smu.shutdown()
-        shutdown_elapsed = time.monotonic() - started
+        # Shared interface owns acquisition and verified shutdown.
+        result = acquisition.acquire(
+            limits,
+            timeout_s=count * 0.2 + 5.0,
+            poll_interval_s=0.05,
+        )
 
         print(
             "\nSMU shutdown verified. "
@@ -195,96 +114,102 @@ def run_phase(smu, *, early_stop):
         )
         input("Confirm DPS150 output is OFF, then press Enter: ")
 
-        write_checked(smu, ":TRAC1:FEED:CONT NEV")
-        retrieve_retaining_faults(smu, readings, count)
-
-        for reading in readings:
-            check_operating_point(reading)
-
-        if early_stop:
-            if reason != "voltage_min":
-                raise RuntimeError(
-                    "Lower-voltage termination did not occur."
-                )
-            if not 1 <= len(readings) < count:
-                raise RuntimeError(
-                    "Acquisition did not terminate early."
-                )
-        else:
-            if reason != "completed" or len(readings) != count:
-                raise RuntimeError(
-                    f"Incomplete acquisition: {len(readings)}/{count}"
-                )
-
-        intervals = [
-            later.timestamp_s - earlier.timestamp_s
-            for earlier, later in zip(readings, readings[1:])
-        ]
-
-        if any(
-            abs(interval - INTERVAL_S) > 0.03
-            for interval in intervals
-        ):
-            raise RuntimeError(
-                "Timestamp spacing failed the broad timing check."
-            )
-
-        print(f"\nStop reason: {reason}", flush=True)
+        # Report the result before checking expected test outcomes.
+        print(f"\nStop reason: {result.stop_reason}", flush=True)
         print(
-            f"Retained records: {len(readings)}/{count}",
+            f"Retained records: "
+            f"{len(result.readings)}/{result.requested_count}",
             flush=True,
         )
         print(
-            f"Mean voltage: "
-            f"{statistics.mean(r.voltage_v for r in readings):.9g} V",
-            flush=True,
-        )
-        print(
-            f"Mean current: "
-            f"{statistics.mean(r.current_a for r in readings) * 1e6:.9g} uA",
-            flush=True,
-        )
-        print(
-            f"Mean signed power: "
-            f"{statistics.mean(r.power_w for r in readings) * 1e6:.9g} uW",
-            flush=True,
-        )
-        print(
-            f"PC time to decision: {decision_elapsed:.6f} s",
+            f"PC time to decision: "
+            f"{result.decision_elapsed_s:.6f} s",
             flush=True,
         )
         print(
             f"PC time through verified shutdown: "
-            f"{shutdown_elapsed:.6f} s",
+            f"{result.shutdown_elapsed_s:.6f} s",
             flush=True,
         )
         print(
             f"Instrument timestamps: "
-            f"{[r.timestamp_s for r in readings]}",
+            f"{[r.timestamp_s for r in result.readings]}",
             flush=True,
         )
 
-        if triggering_reading is not None:
+        if result.triggering_reading is not None:
             print(
-                f"Triggering record: {triggering_reading!r}",
+                f"Triggering record: {result.triggering_reading!r}",
                 flush=True,
             )
 
+        if result.stop_reason != expected_reason:
+            raise RuntimeError(
+                f"Expected {expected_reason!r}, "
+                f"received {result.stop_reason!r}."
+            )
+
+        if early_stop:
+            if not 1 <= len(result.readings) < count:
+                raise RuntimeError("Acquisition did not stop early.")
+            if result.triggering_reading is None:
+                raise RuntimeError("Triggering record was not retained.")
+        elif len(result.readings) != count:
+            raise RuntimeError("Normal completion has wrong record count.")
+
+        for reading in result.readings:
+            if (
+                reading.has_fault
+                or reading.in_compliance
+                or not reading.current_source
+                or not 1.15 <= reading.voltage_v <= 1.45
+                or not -105e-6 <= reading.current_a <= -95e-6
+                or reading.power_w >= 0
+            ):
+                raise RuntimeError(
+                    f"Unexpected retained reading: {reading!r}"
+                )
+
+        intervals = [
+            later.timestamp_s - earlier.timestamp_s
+            for earlier, later in zip(
+                result.readings, result.readings[1:]
+            )
+        ]
+        if any(abs(interval - 0.2) > 0.03 for interval in intervals):
+            raise RuntimeError(
+                "Timestamp spacing failed the broad timing check."
+            )
+
+        print(
+            f"Mean voltage: "
+            f"{statistics.mean(r.voltage_v for r in result.readings):.9g} V",
+            flush=True,
+        )
+        print(
+            f"Mean current: "
+            f"{statistics.mean(r.current_a for r in result.readings) * 1e6:.9g} uA",
+            flush=True,
+        )
+        print(
+            f"Mean signed power: "
+            f"{statistics.mean(r.power_w for r in result.readings) * 1e6:.9g} uW",
+            flush=True,
+        )
         print("Phase passed; SMU shutdown verified.", flush=True)
 
     except BaseException as original_error:
-        original_error.partial_readings = tuple(readings)
-
         print(
             "\nSTOP: TURN DPS150 OUTPUT OFF NOW.",
             flush=True,
         )
 
+        # Also covers errors before acquire() takes ownership.
         try:
             smu.shutdown()
         except Exception as cleanup_error:
             original_error.add_note(
-                "SMU shutdown could not be verified: "
+                "Additional shutdown attempt failed: "
                 f"{type(cleanup_error).__name__}: {cleanup_error}"
             )
 
@@ -315,10 +240,10 @@ def main():
         with KeysightB2902B(VISA_ADDRESS) as smu:
             print(f"\nInstrument: {smu.identity}", flush=True)
 
-            existing_errors = smu.read_errors()
-            if existing_errors:
+            errors = smu.read_errors()
+            if errors:
                 raise RuntimeError(
-                    f"Existing errors: {existing_errors!r}. "
+                    f"Existing errors: {errors!r}. "
                     "Stopped before configuration."
                 )
 
@@ -326,7 +251,7 @@ def main():
             run_phase(smu, early_stop=True)
 
             print(
-                "\nMonitored sink resistor diagnostic passed.",
+                "\nShared-interface monitored sink diagnostic passed.",
                 flush=True,
             )
 
