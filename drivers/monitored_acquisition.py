@@ -21,6 +21,9 @@ from drivers.buffered_acquisition import (
     BufferedStatusError,
     parse_buffer,
 )
+from drivers.shutdown_reporting import (
+    attempt_shutdown_with_report,
+)
 from drivers.spot_acquisition import SMUReading
 
 
@@ -42,13 +45,16 @@ class StopLimits:
             "max_current_a",
         ):
             value = getattr(self, name)
+
             if value is not None:
                 if (
                     isinstance(value, bool)
                     or not isinstance(value, (int, float))
                     or not math.isfinite(value)
                 ):
-                    raise ValueError(f"{name} must be finite or None.")
+                    raise ValueError(
+                        f"{name} must be finite or None."
+                    )
 
         if type(self.stop_on_compliance) is not bool:
             raise ValueError("stop_on_compliance must be bool.")
@@ -64,7 +70,7 @@ class StopLimits:
                     )
 
     def reason_for(self, reading):
-        # Faults take priority over threshold/compliance conditions.
+        # Priority applies within each measurement record.
         if reading.has_fault:
             return "measurement_fault"
 
@@ -119,22 +125,28 @@ class MonitoredResult:
 
     @property
     def fault_readings(self):
-        return tuple(r for r in self.readings if r.has_fault)
+        return tuple(
+            reading
+            for reading in self.readings
+            if reading.has_fault
+        )
 
 
 class MonitoredAcquisition(BufferedAcquisition):
-    """Live trace acquisition, coupled to explicit shutdown.
-
-    Uses existing BufferedAcquisition configuration helpers.
-    Do not mix other acquisition/configuration operations into a run.
+    """Live trace acquisition with explicit shutdown.
 
     Retained data:
-      - Success: result.readings
-      - Exception: exception.partial_readings
-      - Either case: acquisition.readings
+    - Success: result.readings
+    - Exception: exception.partial_readings
+    - Either case: acquisition.readings
+
+    Acquisition exceptions also receive exception.shutdown_report,
+    describing the exception handler's shutdown attempt.
 
     A successful return means shutdown() completed without raising.
     This is reported instrument state, not an isolation guarantee.
+
+    Do not mix other acquisition/configuration operations into a run.
     """
 
     def __init__(self, smu, channel):
@@ -189,6 +201,7 @@ class MonitoredAcquisition(BufferedAcquisition):
             )
 
         count = available - len(records)
+
         if count == 0:
             return []
 
@@ -196,8 +209,7 @@ class MonitoredAcquisition(BufferedAcquisition):
             f":TRAC{self.channel}:DATA? {len(records)},{count}"
         )
 
-        # Preserve well-formed records even when their status flags
-        # indicate faults. Termination policy evaluates them below.
+        # Preserve well-formed fault records for policy evaluation.
         try:
             batch = parse_buffer(response, self.channel, count)
         except BufferedStatusError as error:
@@ -220,7 +232,9 @@ class MonitoredAcquisition(BufferedAcquisition):
             raise RuntimeError("Call configure() successfully first.")
 
         if not self._selected.get_output_state():
-            raise RuntimeError("Selected output must already be ON.")
+            raise RuntimeError(
+                "Selected output must already be ON."
+            )
         self._smu.check_errors()
 
         if self._selected.get_auto_output_on():
@@ -228,8 +242,11 @@ class MonitoredAcquisition(BufferedAcquisition):
         self._smu.check_errors()
 
         other = (
-            self._smu.chan2 if self.channel == 1 else self._smu.chan1
+            self._smu.chan2
+            if self.channel == 1
+            else self._smu.chan1
         )
+
         if other.get_output_state():
             raise RuntimeError("Other channel must remain OFF.")
         self._smu.check_errors()
@@ -239,8 +256,11 @@ class MonitoredAcquisition(BufferedAcquisition):
 
         elements = tuple(
             item.strip().upper()
-            for item in self._query(":FORM:ELEM:SENS?").split(",")
+            for item in self._query(
+                ":FORM:ELEM:SENS?"
+            ).split(",")
         )
+
         if elements != ("VOLT", "CURR", "TIME", "STAT"):
             raise RuntimeError("Unexpected result elements.")
 
@@ -257,10 +277,14 @@ class MonitoredAcquisition(BufferedAcquisition):
         if self._query(
             f":TRAC{self.channel}:TST:FORM?"
         ).upper() != "ABS":
-            raise RuntimeError("Absolute trace timestamps required.")
+            raise RuntimeError(
+                "Absolute trace timestamps required."
+            )
 
         if self._trace_count() != 0:
-            raise RuntimeError("Trace contains pre-existing records.")
+            raise RuntimeError(
+                "Trace contains pre-existing records."
+            )
 
         self._check_lost_events()
 
@@ -271,12 +295,16 @@ class MonitoredAcquisition(BufferedAcquisition):
         timeout_s=None,
         poll_interval_s=0.05,
     ):
-        """Run once; always attempt shutdown before returning/raising.
+        """Run once; attempt shutdown before returning or raising.
 
         Reconfigure with outputs OFF before each subsequent run.
 
         Current limits are signed, not absolute-magnitude limits.
         Extra records acquired before shutdown are retained.
+
+        On an exception:
+        - partial_readings contains retained parsed records.
+        - shutdown_report describes exception-handler cleanup.
         """
         records = []
         self.readings = ()
@@ -290,21 +318,29 @@ class MonitoredAcquisition(BufferedAcquisition):
                 raise TypeError("limits must be StopLimits.")
 
             poll = self._positive_interval(
-                poll_interval_s, "poll_interval_s"
+                poll_interval_s,
+                "poll_interval_s",
             )
 
             self._preflight()
 
             if timeout_s is None:
-                timeout_s = self._count * self._interval_s + 5.0
+                timeout_s = (
+                    self._count * self._interval_s + 5.0
+                )
 
-            timeout = self._positive_interval(timeout_s, "timeout_s")
+            timeout = self._positive_interval(
+                timeout_s,
+                "timeout_s",
+            )
 
-            # Configuration is single-use, including failed starts.
             self._trace_ready = False
             requested_count = self._count
 
-            self._write(f":INIT:ACQ (@{self.channel})")
+            self._write(
+                f":INIT:ACQ (@{self.channel})"
+            )
+
             deadline = started + timeout
             idle_bit = 4 if self.channel == 1 else 10
 
@@ -317,12 +353,15 @@ class MonitoredAcquisition(BufferedAcquisition):
                         "Monitored acquisition timed out."
                     )
 
-                state = self._register(":STAT:OPER:COND?")
+                state = self._register(
+                    ":STAT:OPER:COND?"
+                )
                 self._check_lost_events()
                 batch = self._read_new(records)
 
                 for reading in batch:
                     candidate = limits.reason_for(reading)
+
                     if candidate is not None:
                         reason = candidate
                         trigger = reading
@@ -349,11 +388,10 @@ class MonitoredAcquisition(BufferedAcquisition):
             self._read_new(records)
 
             # A final batch can arrive between polling and shutdown.
-            # Preserve it, and do not report clean completion if that
-            # batch contains a termination condition.
             if reason == "completed":
                 for reading in records:
                     candidate = limits.reason_for(reading)
+
                     if candidate is not None:
                         reason = candidate
                         trigger = reading
@@ -361,7 +399,7 @@ class MonitoredAcquisition(BufferedAcquisition):
 
                 if len(records) != requested_count:
                     raise RuntimeError(
-                        f"Acquisition became idle with "
+                        "Acquisition became idle with "
                         f"{len(records)}/{requested_count} records."
                     )
 
@@ -378,14 +416,10 @@ class MonitoredAcquisition(BufferedAcquisition):
             self.readings = tuple(records)
             original_error.partial_readings = self.readings
 
-            try:
-                self._smu.shutdown()
-            except Exception as cleanup_error:
-                original_error.add_note(
-                    "Shutdown could not be verified: "
-                    f"{type(cleanup_error).__name__}: {cleanup_error}"
-                )
-
+            attempt_shutdown_with_report(
+                self._smu,
+                original_error,
+            )
             raise
 
         finally:
@@ -399,6 +433,8 @@ class MonitoredAcquisition(BufferedAcquisition):
             or not math.isfinite(value)
             or value <= 0
         ):
-            raise ValueError(f"{name} must be finite and positive.")
+            raise ValueError(
+                f"{name} must be finite and positive."
+            )
 
         return float(value)
