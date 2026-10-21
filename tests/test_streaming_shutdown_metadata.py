@@ -13,8 +13,8 @@ from unittest.mock import patch
 from drivers.shutdown_reporting import (
     attempt_shutdown_with_report,
 )
-from drivers.spot_acquisition import SMUReading
-from drivers.streaming_run import StreamingRun
+from acquisition.spot_acquisition import SMUReading
+from recording.streaming_run import StreamingRun
 
 
 class FakeSMU:

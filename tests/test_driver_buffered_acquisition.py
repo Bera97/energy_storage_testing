@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from drivers.buffered_acquisition import (
+from acquisition.buffered_acquisition import (
     BufferedAcquisition,
     BufferedStatusError,
     parse_buffer,
@@ -171,7 +171,7 @@ def test_completion_timeout_attempts_abort(monkeypatch):
 
     clock = iter([0.0, 2.0])
     monkeypatch.setattr(
-        "drivers.buffered_acquisition.time.monotonic",
+        "acquisition.buffered_acquisition.time.monotonic",
         lambda: next(clock),
     )
 

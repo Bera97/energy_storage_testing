@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import math
 import time
 
-from drivers.buffered_acquisition import (
+from acquisition.buffered_acquisition import (
     BufferedAcquisition,
     BufferedStatusError,
     parse_buffer,
@@ -24,7 +24,7 @@ from drivers.buffered_acquisition import (
 from drivers.shutdown_reporting import (
     attempt_shutdown_with_report,
 )
-from drivers.spot_acquisition import SMUReading
+from acquisition.spot_acquisition import SMUReading
 
 
 @dataclass(frozen=True)

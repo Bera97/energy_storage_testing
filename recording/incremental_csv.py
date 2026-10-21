@@ -16,8 +16,8 @@ Flushing does not guarantee power-loss durability.
 import csv
 from pathlib import Path
 
-from drivers.run_data import CSV_FIELDS
-from drivers.spot_acquisition import SMUReading
+from recording.run_data import CSV_FIELDS
+from acquisition.spot_acquisition import SMUReading
 
 
 class IncrementalCSVWriter:

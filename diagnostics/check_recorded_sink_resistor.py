@@ -27,12 +27,12 @@ from diagnostics.check_dc_resistor import (
 )
 from drivers.dc_output import enable_dc_output
 from drivers.keysight_b2902b import KeysightB2902B
-from drivers.monitored_acquisition import (
+from acquisition.monitored_acquisition import (
     MonitoredAcquisition,
     StopLimits,
 )
-from drivers.recorded_acquisition import acquire_and_save
-from drivers.run_preflight import prepare_run_destination
+from recording.recorded_acquisition import acquire_and_save
+from recording.run_preflight import prepare_run_destination
 
 
 INTERVAL_S = 0.2

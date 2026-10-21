@@ -6,12 +6,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from drivers.monitored_acquisition import (
+from acquisition.monitored_acquisition import (
     MonitoredResult,
     StopLimits,
 )
-from drivers.recorded_acquisition import acquire_and_save
-from drivers.spot_acquisition import SMUReading
+from recording.recorded_acquisition import acquire_and_save
+from acquisition.spot_acquisition import SMUReading
 
 
 def example_result():
@@ -118,7 +118,7 @@ class RecordedAcquisitionTests(unittest.TestCase):
         acquisition = FakeAcquisition(error=original)
 
         with patch(
-            "drivers.recorded_acquisition.save_monitored_failure",
+            "recording.recorded_acquisition.save_monitored_failure",
             side_effect=OSError("simulated disk failure"),
         ):
             with self.assertRaises(TimeoutError) as caught:
@@ -143,7 +143,7 @@ class RecordedAcquisitionTests(unittest.TestCase):
         acquisition = FakeAcquisition(result=expected)
 
         with patch(
-            "drivers.recorded_acquisition.save_monitored_result",
+            "recording.recorded_acquisition.save_monitored_result",
             side_effect=OSError("simulated disk failure"),
         ):
             with self.assertRaises(OSError) as caught:

@@ -13,8 +13,8 @@ Measurements are still retained in memory; this is not a
 bounded-memory acquisition implementation.
 """
 
-from drivers.incremental_csv import IncrementalCSVWriter
-from drivers.monitored_acquisition import MonitoredAcquisition
+from recording.incremental_csv import IncrementalCSVWriter
+from acquisition.monitored_acquisition import MonitoredAcquisition
 
 
 class StreamingMonitoredAcquisition(MonitoredAcquisition):

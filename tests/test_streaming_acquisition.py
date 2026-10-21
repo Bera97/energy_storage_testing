@@ -9,10 +9,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from drivers.incremental_csv import IncrementalCSVWriter
-from drivers.monitored_acquisition import StopLimits
-from drivers.spot_acquisition import SMUReading
-from drivers.streaming_acquisition import (
+from recording.incremental_csv import IncrementalCSVWriter
+from acquisition.monitored_acquisition import StopLimits
+from acquisition.spot_acquisition import SMUReading
+from acquisition.streaming_acquisition import (
     StreamingMonitoredAcquisition,
 )
 

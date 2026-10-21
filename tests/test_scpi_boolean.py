@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from drivers.scpi import parse_scpi_bool
-from drivers.spot_acquisition import SpotAcquisition
+from acquisition.spot_acquisition import SpotAcquisition
 
 
 @pytest.mark.parametrize(

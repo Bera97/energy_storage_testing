@@ -18,7 +18,7 @@ from diagnostics.check_dc_resistor import (
 )
 from drivers.dc_output import enable_dc_output
 from drivers.keysight_b2902b import KeysightB2902B
-from drivers.monitored_acquisition import (
+from acquisition.monitored_acquisition import (
     MonitoredAcquisition,
     StopLimits,
 )

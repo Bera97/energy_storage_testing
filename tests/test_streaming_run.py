@@ -6,9 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from drivers.monitored_acquisition import MonitoredResult
-from drivers.spot_acquisition import SMUReading
-from drivers.streaming_run import StreamingRun
+from acquisition.monitored_acquisition import MonitoredResult
+from acquisition.spot_acquisition import SMUReading
+from recording.streaming_run import StreamingRun
 
 
 def reading(timestamp=0.0, voltage=1.303):

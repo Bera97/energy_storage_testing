@@ -6,8 +6,8 @@ No VISA connection or hardware required.
 
 import unittest
 
-from drivers.monitored_acquisition import MonitoredAcquisition
-from drivers.spot_acquisition import SMUReading
+from acquisition.monitored_acquisition import MonitoredAcquisition
+from acquisition.spot_acquisition import SMUReading
 
 
 class FakeSMU:

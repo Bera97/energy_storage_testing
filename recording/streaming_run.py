@@ -27,8 +27,8 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-from drivers.incremental_csv import IncrementalCSVWriter
-from drivers.monitored_acquisition import MonitoredResult
+from recording.incremental_csv import IncrementalCSVWriter
+from acquisition.monitored_acquisition import MonitoredResult
 
 
 def utc_now():

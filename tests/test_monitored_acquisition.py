@@ -2,11 +2,11 @@
 
 import unittest
 
-from drivers.monitored_acquisition import (
+from acquisition.monitored_acquisition import (
     MonitoredAcquisition,
     StopLimits,
 )
-from drivers.spot_acquisition import SMUReading
+from acquisition.spot_acquisition import SMUReading
 
 
 def reading(time_s=0.0, voltage=1.0, current=144e-6, status=3200):

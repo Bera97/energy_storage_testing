@@ -11,8 +11,8 @@ acquisition exception if exporting that exception also fails.
 
 from dataclasses import asdict
 
-from drivers.monitored_acquisition import MonitoredResult
-from drivers.run_data import save_run
+from acquisition.monitored_acquisition import MonitoredResult
+from recording.run_data import save_run
 
 
 def save_monitored_result(

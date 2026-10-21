@@ -6,12 +6,16 @@
 __pycache__/
 *.py[cod]
 
-# Automated-test caches
+# Automated-test and analysis-tool caches
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Generated measurement data
-results/*
-!results/.gitkeep
+# Generated measurement data and analysis outputs
+runs/
+results/
 
 # Temporary Code Runner files
 tempCodeRunnerFile.py

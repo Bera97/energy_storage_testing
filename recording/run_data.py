@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 import re
 
-from drivers.spot_acquisition import SMUReading
+from acquisition.spot_acquisition import SMUReading
 
 
 CSV_FIELDS = (

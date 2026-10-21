@@ -17,7 +17,7 @@ from diagnostics.check_dc_resistor import (
     RESISTANCE_OHM,
     VISA_ADDRESS,
 )
-from drivers.buffered_acquisition import BufferedAcquisition
+from acquisition.buffered_acquisition import BufferedAcquisition
 from drivers.dc_output import enable_dc_output
 from drivers.keysight_b2902b import KeysightB2902B
 

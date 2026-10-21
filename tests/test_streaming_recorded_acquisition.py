@@ -6,15 +6,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from drivers.monitored_acquisition import (
+from acquisition.monitored_acquisition import (
     MonitoredResult,
     StopLimits,
 )
-from drivers.spot_acquisition import SMUReading
-from drivers.streaming_recorded_acquisition import (
+from acquisition.spot_acquisition import SMUReading
+from recording.recorded_acquisition import (
     acquire_streaming_and_finalize,
 )
-from drivers.streaming_run import StreamingRun
+from recording.streaming_run import StreamingRun
 
 
 def reading(timestamp=0.0, voltage=1.303):

@@ -7,12 +7,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from drivers.monitored_acquisition import MonitoredResult
-from drivers.monitored_run_data import (
+from acquisition.monitored_acquisition import MonitoredResult
+from recording.monitored_run_data import (
     save_monitored_failure,
     save_monitored_result,
 )
-from drivers.spot_acquisition import SMUReading
+from acquisition.spot_acquisition import SMUReading
 
 
 def reading(timestamp, voltage, status=3201):
@@ -177,7 +177,7 @@ class MonitoredRunDataTests(unittest.TestCase):
         original.partial_readings = (reading(0.0, 1.3),)
 
         with patch(
-            "drivers.monitored_run_data.save_run",
+            "recording.monitored_run_data.save_run",
             side_effect=OSError("simulated disk failure"),
         ):
             with self.assertRaises(OSError):

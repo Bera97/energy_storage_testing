@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from drivers.incremental_csv import IncrementalCSVWriter
-from drivers.run_data import CSV_FIELDS
-from drivers.spot_acquisition import SMUReading
+from recording.incremental_csv import IncrementalCSVWriter
+from recording.run_data import CSV_FIELDS
+from acquisition.spot_acquisition import SMUReading
 
 
 def reading(timestamp, voltage=1.303, status=3201):

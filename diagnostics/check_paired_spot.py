@@ -19,7 +19,7 @@ from diagnostics.check_dc_resistor import (
 )
 from drivers.dc_output import enable_dc_output
 from drivers.keysight_b2902b import KeysightB2902B
-from drivers.spot_acquisition import SpotAcquisition
+from acquisition.spot_acquisition import SpotAcquisition
 
 
 SAMPLE_COUNT = 10

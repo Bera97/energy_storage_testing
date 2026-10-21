@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from drivers.scpi import parse_scpi_bool
 from drivers.smu_channel import SMUChannel
-from drivers.spot_acquisition import (
+from acquisition.spot_acquisition import (
     SMUReading,
     SpotAcquisition,
     parse_reading,

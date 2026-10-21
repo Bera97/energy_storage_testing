@@ -15,7 +15,7 @@ from diagnostics.check_dc_resistor import (
     VISA_ADDRESS,
     configure_channel,
 )
-from drivers.buffered_acquisition import (
+from acquisition.buffered_acquisition import (
     BufferedAcquisition,
     parse_buffer,
 )

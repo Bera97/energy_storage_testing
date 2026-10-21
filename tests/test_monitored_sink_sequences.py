@@ -5,11 +5,11 @@ No VISA connection or hardware required.
 
 import unittest
 
-from drivers.monitored_acquisition import (
+from acquisition.monitored_acquisition import (
     MonitoredAcquisition,
     StopLimits,
 )
-from drivers.spot_acquisition import SMUReading
+from acquisition.spot_acquisition import SMUReading
 
 
 def sink_reading(timestamp, voltage):

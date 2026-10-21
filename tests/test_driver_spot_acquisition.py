@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from drivers.keysight_b2902b import KeysightB2902B
-from drivers.spot_acquisition import (
+from acquisition.spot_acquisition import (
     MeasurementStatusError,
     SpotAcquisition,
     parse_reading,

@@ -11,7 +11,7 @@ from diagnostics.check_dc_resistor import (
     VISA_ADDRESS,
 )
 from drivers.keysight_b2902b import KeysightB2902B
-from drivers.spot_acquisition import SpotAcquisition
+from acquisition.spot_acquisition import SpotAcquisition
 
 
 def query_and_print(smu, command):

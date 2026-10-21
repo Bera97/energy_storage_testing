@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from drivers.run_data import CSV_FIELDS, save_run
-from drivers.spot_acquisition import SMUReading
+from recording.run_data import CSV_FIELDS, save_run
+from acquisition.spot_acquisition import SMUReading
 
 
 def reading(
