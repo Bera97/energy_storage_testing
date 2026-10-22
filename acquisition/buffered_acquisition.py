@@ -92,7 +92,7 @@ class BufferedAcquisition:
     or configuration changes are permitted during acquisition.
     """
 
-    MAX_RECORDS = 2500
+    MAX_RECORDS = 100000
 
     def __init__(self, smu: "KeysightB2902B", channel: int):
         if type(channel) is not int or channel not in (1, 2):

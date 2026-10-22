@@ -1,0 +1,87 @@
+schema_version: 1
+
+experiment:
+  type: preconditioning
+  name: cell_preconditioning
+
+  # Total complete charge/rest/discharge/rest sequences.
+  cycles: 2
+
+dut:
+  name: null
+  specimen_id: null
+
+  # battery, edlc, or lic
+  category: battery
+  chemistry: null
+  manufacturer: null
+  model: null
+  datasheet_reference: null
+
+  # Required for battery charging based on C-rate.
+  nominal_capacity_ah: null
+
+  # Optional descriptive field for capacitor DUTs.
+  nominal_capacitance_f: null
+
+  ratings:
+    minimum_voltage_v: null
+    maximum_voltage_v: null
+    maximum_continuous_charge_current_a: null
+    maximum_continuous_discharge_current_a: null
+
+instrument:
+  visa_address: "USB0::0x2A8D::0x9201::MY61391173::0::INSTR"
+  channel: 1
+  four_wire: false
+  nplc: 1.0
+
+acquisition:
+  interval_s: 0.2
+
+  # Maximum permitted gap between consecutive recorded samples.
+  # Must be >= interval_s and < charge termination hold_time_s.
+  maximum_sample_gap_s: null
+
+charge:
+  mode: cc_cv
+
+  current:
+    # Battery: capacity_c_rate with factor 0.5
+    # EDLC: rated_max_charge_fraction with factor 0.10
+    # LIC: rated_max_charge_fraction with factor 0.50
+    basis: capacity_c_rate
+    factor: 0.5
+
+  target_voltage_v: null
+
+  # Absolute voltage difference allowed for CV qualification.
+  # Must be positive and smaller than target_voltage_v.
+  cv_voltage_tolerance_v: null
+
+  termination:
+    # Alternative: configured_charge_current
+    current_reference: rated_max_charge_current
+    current_factor: null
+    hold_time_s: null
+
+  maximum_duration_s: null
+  maximum_cv_duration_s: null
+
+rest:
+  after_charge_s: 900
+  after_discharge_s: 900
+
+discharge:
+  mode: constant_current
+
+  current:
+    basis: rated_max_discharge_fraction
+    factor: 0.5
+
+  cutoff_voltage_v: null
+  maximum_duration_s: null
+
+output:
+  # The dry run does not create this directory.
+  root_directory: runs
