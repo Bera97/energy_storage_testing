@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "run_id": "resistor_ch1_compliance_01",
+  "created_at_utc": "2026-10-22T14:59:51.094120+00:00",
+  "timestamp_basis": "raw_instrument_time",
+  "export_mode": "incremental_csv",
+  "metadata": {
+    "channel": 1,
+    "identity": "Keysight Technologies,B2902B,MY61391173,5.0.2029.1911",
+    "commissioning_test": "resistor_current_compliance",
+    "settings": {
+      "channel": 1,
+      "voltage_v": 1.0,
+      "current_compliance_a": 0.0001,
+      "record_count": 100,
+      "interval_s": 0.1,
+      "nplc": 1.0,
+      "host_timeout_s": 15.0,
+      "maximum_sample_gap_s": 0.25,
+      "minimum_voltage_v": 0.6,
+      "maximum_voltage_v": 0.8,
+      "minimum_current_a": 9e-05,
+      "maximum_current_a": 0.00011,
+      "nominal_resistance_ohm": 6930.0,
+      "resistor_rating_w": 0.25
+    },
+    "compliance_expected": true,
+    "acceptance_policy": "broad_functional_checks_not_calibration",
+    "preparation_readback": {
+      "source_mode": "VOLT",
+      "voltage_setpoint_v": 1.0,
+      "current_compliance_a": 0.0001,
+      "four_wire": false,
+      "output_off_mode": "HIZ",
+      "automatic_output_on": false,
+      "source_voltage_autorange": true,
+      "measurement_voltage_autorange": true,
+      "measurement_current_autorange": true,
+      "nplc": 1.0,
+      "timebase": {
+        "channel": 1,
+        "timer_auto_reset": true,
+        "timer_reset_event": "initiate",
+        "trace_timestamp_format": "ABS",
+        "trace_time_basis": "Elapsed relative to the first trace timestamp.",
+        "output_enable_time_established": false,
+        "host_phase_deadline_required": true
+      },
+      "test_policy": "intentional_current_compliance"
+    }
+  },
+  "outcome": {
+    "state": "returned",
+    "stop_reason": "completed",
+    "requested_count": 100,
+    "retained_count": 100,
+    "records_flushed": 100,
+    "triggering_record_index": null,
+    "triggering_reading": null,
+    "decision_elapsed_s": 10.077999999979511,
+    "shutdown_elapsed_s": 10.141000000061467,
+    "shutdown_verified": true,
+    "shutdown_evidence": "MonitoredAcquisition returned after shutdown completed",
+    "fault_record_indices": []
+  },
+  "finalized_at_utc": "2026-10-22T15:00:01.675377+00:00",
+  "record_count": 100
+}
