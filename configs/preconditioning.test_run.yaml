@@ -26,9 +26,9 @@ dut:
 
   ratings:
     minimum_voltage_v: 0
-    maximum_voltage_v: 5.5
-    maximum_continuous_charge_current_a: 0.02
-    maximum_continuous_discharge_current_a: 0.02
+    maximum_voltage_v: 5.55
+    maximum_continuous_charge_current_a: 0.01
+    maximum_continuous_discharge_current_a: 0.01
 
 instrument:
   visa_address: "USB0::0x2A8D::0x9201::MY61391173::0::INSTR"
@@ -37,11 +37,11 @@ instrument:
   nplc: 1.0
 
 acquisition:
-  interval_s: 0.25
+  interval_s: 0.2
 
   # Maximum permitted gap between consecutive recorded samples.
   # Must be >= interval_s and < charge termination hold_time_s.
-  maximum_sample_gap_s: 1
+  maximum_sample_gap_s: 0.5
 
 charge:
   mode: cc_cv
@@ -53,7 +53,7 @@ charge:
     basis: rated_max_charge_fraction
     factor: 0.5
 
-  target_voltage_v: 5.4
+  target_voltage_v: 5.5
 
   # Absolute voltage difference allowed for CV qualification.
   # Must be positive and smaller than target_voltage_v.
@@ -63,24 +63,24 @@ charge:
     # Alternative: configured_charge_current
     current_reference: rated_max_charge_current
     current_factor: 0.05
-    hold_time_s: 120
+    hold_time_s: 10
 
   maximum_duration_s: 3600
   maximum_cv_duration_s: 1800
 
 rest:
-  after_charge_s: 300
-  after_discharge_s: 300
+  after_charge_s: 120
+  after_discharge_s: 30
 
 discharge:
   mode: constant_current
 
   current:
     basis: rated_max_discharge_fraction
-    factor: 0.5
+    factor: 0.25
 
-  cutoff_voltage_v: 0.5
-  maximum_duration_s: 1800
+  cutoff_voltage_v: 0.0
+  maximum_duration_s: 3600
 
 output:
   # The dry run does not create this directory.
