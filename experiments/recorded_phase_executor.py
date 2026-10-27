@@ -35,7 +35,7 @@ from experiments.preconditioning import build_plan
 from experiments.prepare_charge import prepare_charge
 from experiments.prepare_discharge import prepare_discharge
 from recording.experiment_phase_run import ExperimentPhaseRun
-from recording.phase_recorded_acquisition import (
+from recording.experiment_phase_run import (
     _record_failure_preserving_original,
 )
 

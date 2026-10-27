@@ -250,3 +250,21 @@ python -m pytest tests -q
 
 Do not lint the entire virtual environment or run hardware diagnostics as a replacement for offline tests.
 Test counts can change as coverage evolves.
+
+## Source consolidation
+The maintained diagnostic scripts are:
+- `diagnostics/check_visa.py`
+- `diagnostics/check_dc_resistor.py`
+- `diagnostics/check_streaming_sink_resistor.py`
+- `diagnostics/check_streaming_sink_duration.py`
+- `diagnostics/check_streaming_delayed_sink_cutoff.py`
+Historical development probes were retired from the current source tree.
+Their removal retires those individual manual commands; it does not
+establish that every old check has an equivalent replacement.
+The implementations remain in earlier Git revisions.
+Charge/discharge polling interfaces now live in
+`experiments/phase_polling.py`.
+Prepared-phase recording coordination now lives alongside
+`ExperimentPhaseRun` in `recording/experiment_phase_run.py`.
+Existing polling endpoints, phase-specific exception-report attributes,
+recording finalization, and original-error preservation remain unchanged.
