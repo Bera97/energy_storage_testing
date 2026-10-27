@@ -1,42 +1,48 @@
 # Energy storage testing
 
-Recorded preconditioning experiments using a Keysight B2902B source-measure unit.
+Recorded energy-storage experiments using a Keysight B2902B source-measure unit.
 
-Normal workflow:
+The public interface is `python -m smu`. Run commands from the repository root.
 
-1. Review a specimen-specific YAML configuration.
-2. Preview the execution plan without hardware access.
-3. Explicitly authorize a live experiment.
-4. Validate the saved experiment evidence.
-5. Analyze the recorded active phases offline.
+## Everyday commands
 
-Run all commands below from the repository root. PowerShell examples use a backtick for line continuation; do not place spaces after it.
+| Command | Purpose | Hardware behavior |
+|---|---|---|
+| `plan --config FILE` | Validate live-required settings and preview the plan | No connection or output enabling |
+| `run --config FILE` | Preview by default; execute only with explicit authorization | Live execution requires `--execute` and confirmations |
+| `check DIRECTORY` | Validate experiment evidence | Offline, read-only |
+| `analyze DIRECTORY OUTPUT_DIRECTORY` | Export all active phases of a completed experiment | Offline; writes only new analysis outputs |
+| `analyze-phase DIRECTORY OUTPUT_DIRECTORY` | Export one recorded active phase | Offline; writes only new analysis outputs |
+
+```powershell
+python -m smu --help
+python -m smu run --help
+python -m smu analyze --help
+```
+
+Run separate commands on separate lines. PowerShell backticks continue one command, and must not have trailing spaces.
 
 ## Safety and scope
 
-A successful configuration check or dry run does not establish electrical safety.
-Review the actual DUT datasheet, wiring, polarity, sensing arrangement, instrument operating envelope, and independent protection before live execution.
+A passing preview establishes consistency with supplied configuration, not electrical safety or correctness of the DUT ratings.
+Verify the actual datasheet, polarity, wiring, sensing, instrument operating envelope, and independent DUT protection before execution.
+Software/instrument shutdown evidence is not proof of physical isolation.
 
-The software does not control an external power supply, automatically resume interrupted experiments, or automatically retry a live run.
-Reported shutdown verification is instrument/software evidence, not proof of physical isolation or a substitute for independent protection.
+No automatic live retry, experiment resume, or external-power-supply control is provided.
+Do not run commissioning/diagnostic scripts indiscriminately: some connect to hardware or enable outputs.
 
-The committed `configs/preconditioning.test_run.yaml` is an existing specimen-specific test profile, not a universally safe template. It includes placeholder descriptive metadata. Do not reuse its ratings or currents for another device without verification.
+The committed `configs/preconditioning.test_run.yaml` contains specimen-specific settings and placeholder descriptive metadata. It is not a universally safe template.
 
 ## Environment
 
-### Existing working environment
-
-Keep the working environment used for your validated runs. Activate it in PowerShell:
+Keep the existing validated environment rather than upgrading it for this documentation change.
 
 ```powershell
 .\.SMUvenv\Scripts\Activate.ps1
 python --version
 ```
 
-### Fresh environment only
-
-Do not recreate or upgrade an already working environment merely to follow this section.
-The code uses `BaseException.add_note`, so use Python 3.11 or newer. A fully pinned, independently verified dependency specification is not supplied by this README.
+For a fresh environment only:
 
 ```powershell
 python -m venv .SMUvenv
@@ -44,173 +50,190 @@ python -m venv .SMUvenv
 python -m pip install PyYAML PyVISA pytest pyflakes
 ```
 
-These are the direct runtime/test/lint packages used by the inspected workflow, not a frozen environment specification.
-Live instrument communication also requires a suitable VISA backend. Installing PyVISA alone does not install a vendor VISA library. Retain the known-working VISA setup on the measurement PC.
+Use Python 3.11 or newer: the code uses `BaseException.add_note`.
+This is an initial direct-dependency setup, not a pinned or independently qualified environment specification.
+Live communication also requires a suitable VISA backend; installing PyVISA alone does not install a vendor VISA library. Retain the known-working instrument-PC setup.
 
-## 1. Review the configuration
+## 1. Prepare a specimen-specific configuration
 
-Create a specimen-specific copy rather than silently changing a profile used by previous experiments:
+Copy an existing profile only if the destination does not already exist:
 
 ```powershell
-Copy-Item .\configs\preconditioning.test_run.yaml .\configs\preconditioning.local.yaml
+if (-not (Test-Path .\configs\preconditioning.local.yaml)) {
+    Copy-Item .\configs\preconditioning.test_run.yaml .\configs\preconditioning.local.yaml
+}
 ```
 
-Review every section:
+Review all sections before use:
 
-| Section | What to verify |
+| Section | Review |
 |---|---|
-| `experiment` | Experiment type, name, and number of complete cycles |
-| `dut` | Specimen identity, actual model/datasheet, category, capacity/capacitance, and ratings |
-| `instrument` | VISA resource, channel, two-/four-wire setting, and NPLC |
-| `acquisition` | Sample interval and maximum permitted sample gap |
-| `charge` | Current-selection basis/factor, voltage target, CV tolerance, termination, and timeouts |
-| `rest` | Rest durations after charge and discharge |
-| `discharge` | Current-selection factor, cutoff voltage, and timeout |
+| `experiment` | Type, name, complete cycle count |
+| `dut` | Specimen identity, category, real model/datasheet, capacity/capacitance, verified ratings |
+| `instrument` | VISA address, channel, sensing arrangement, NPLC |
+| `acquisition` | Sampling interval and maximum permitted sample gap |
+| `charge` | Current basis/factor, target voltage, CV tolerance, termination reference/factor/hold, timeouts |
+| `rest` | Durations after charge and discharge |
+| `discharge` | Current basis/factor, cutoff voltage, timeout |
 | `output` | Recording root directory |
 
-Do not add ad-hoc YAML keys: the current loader rejects unknown fields and duplicate keys.
+The current schema uses current `basis` and `factor`, not an arbitrary `current_A` key. Inspect the resolved currents in the plan.
+Unknown fields and duplicate YAML keys are rejected.
 
-The current schema selects currents through `basis` and `factor`; it does not expose an arbitrary `current_A` field. Review the resolved currents in the preview rather than assuming that every factor is a fraction of the same quantity.
+Live-required monitoring includes `charge.cv_voltage_tolerance_v` and `acquisition.maximum_sample_gap_s`. The gap must be at least the sample interval and less than the termination hold time.
 
-For live charge monitoring, both `charge.cv_voltage_tolerance_v` and `acquisition.maximum_sample_gap_s` must be explicit. The maximum sample gap must be at least the sampling interval and less than the termination hold time.
+### Different profiles versus different procedures
 
-## 2. Preview without hardware
+Different compatible YAML profiles can select different specimens, settings, durations, and cycle counts using the same CLI.
+Currently the implemented procedure is `experiment.type: preconditioning`, with charge/rest/discharge/rest cycles.
+An unrelated procedure needs a dedicated validated planner/executor before a new `experiment.type` can be accepted. Changing the type string alone does not implement a new test.
+The same CLI can remain the public interface as additional procedures are implemented.
 
-Use the live entry point in its explicit dry-run mode:
-
-```powershell
-python -m experiments.run_live `
-    --config .\configs\preconditioning.local.yaml `
-    --dry-run
-```
-
-This validates live-required settings and prints a JSON preview without connecting to an instrument, enabling output, or creating experiment recordings.
-
-Review the specimen, resource, channel, resolved phase settings, acquisition budget, and required operator ceilings.
-The default software acquisition-planning limit is 100000 records; planning does not query or independently validate instrument capacity.
-
-The older planning-only entry point remains available:
+## 2. Preview
 
 ```powershell
-python -m experiments `
-    --config .\configs\preconditioning.local.yaml `
-    --dry-run
+python -m smu plan --config .\configs\preconditioning.local.yaml
 ```
 
-The planning-only entry point can accept configurations missing monitoring fields that the live-entry preview requires. Prefer the live-entry preview when preparing a live run.
+Review the specimen, resource, channel, resolved currents, phase order, monitoring, acquisition budgets, and required operator ceilings.
+The preview reports `will_connect: false` and `will_enable_output: false` and does not create experiment recordings.
+`plan` cannot be combined with `--execute`.
+
+The default software planning limit is 100000 records. Planning does not query or independently qualify instrument capacity.
 
 ## 3. Explicit live execution
 
-Do not execute a live run merely because a preview succeeded.
-
-Inspect the supported arguments:
+Template only: replace every placeholder after physical and configuration review. Numeric placeholders intentionally are not executable values.
 
 ```powershell
-python -m experiments.run_live --help
-```
-
-Live execution requires all of:
-
-- `--execute`
-- `--experiment-id`: a unique identifier containing 1-80 ASCII letters, digits, underscores, or hyphens
-- `--confirm-specimen`: exactly the configured `dut.specimen_id`
-- `--expected-serial`: the reviewed B2902B serial number
-- `--max-voltage-v`: an explicitly reviewed positive voltage ceiling
-- `--max-current-a`: an explicitly reviewed positive current ceiling
-
-Template only: replace every `REPLACE_...` value after physical and configuration review. The numeric placeholders are intentionally not executable values.
-
-```powershell
-python -m experiments.run_live `
+python -m smu run `
     --config .\configs\preconditioning.local.yaml `
     --execute `
-    --experiment-id REPLACE_UNIQUE_EXPERIMENT_ID `
-    --confirm-specimen REPLACE_SPECIMEN_ID `
+    --experiment-id REPLACE_UNIQUE_ID `
+    --confirm-specimen REPLACE_EXACT_SPECIMEN_ID `
     --expected-serial REPLACE_VERIFIED_SERIAL `
     --max-voltage-v REPLACE_REVIEWED_VOLTAGE_CEILING `
     --max-current-a REPLACE_REVIEWED_CURRENT_CEILING
 ```
 
-Do not automatically copy minimum required ceilings from the preview without checking whether the configured experiment itself is appropriate. In particular, discharge preparation uses the supplied DUT maximum voltage as voltage compliance, which can exceed the charge target.
+Without `--execute`, `run` previews rather than executing.
+The specimen confirmation must match the YAML exactly. The expected serial is checked against instrument identity.
+Experiment IDs contain 1-80 ASCII letters, digits, underscores, or hyphens.
 
-Optional arguments include `--maximum-records`, `--timeout-ms`, and `--visa-library`; see `--help` before changing them.
+Review operator ceilings independently; do not blindly derive them from an inappropriate configuration. Discharge preparation uses the supplied DUT maximum voltage as voltage compliance, which can exceed the charge target.
 
-Keep the reported `experiment_directory`. Live execution reserves its manifest before connecting and attempts final shutdown/session close before successful finalization.
-If execution raises, inspect its error report and any recorded experiment directory. Do not assume an interrupted experiment completed, and do not rerun it automatically.
+Optional flags include `--maximum-records`, `--timeout-ms`, and `--visa-library`; inspect `run --help` before changing them.
+Keep the reported `experiment_directory`.
+On failure or interruption, preserve the manifest and partial recordings; do not automatically restart or mark them completed.
 
-## 4. Validate saved evidence
+## 4. Validate the experiment
 
-After recording has stopped, set the path to the experiment directory actually reported by the runner:
+Use the actual experiment directory reported by the runner:
 
 ```powershell
 $ExperimentDir = ".\runs\REPLACE_WITH_REPORTED_EXPERIMENT_DIRECTORY"
-
-python -m analysis.check_preconditioning_experiment "$ExperimentDir"
+python -m smu check "$ExperimentDir"
 ```
 
-For machine-readable output:
+For JSON:
 
 ```powershell
-python -m analysis.check_preconditioning_experiment "$ExperimentDir" --json
+python -m smu check "$ExperimentDir" --json
 ```
 
-Exit codes:
-
-| Code | Meaning |
+| Exit code | Meaning |
 |---|---|
-| 0 | Valid evidence for a completed experiment |
+| 0 | Valid completed experiment evidence |
 | 1 | Invalid evidence or validation could not complete |
 | 2 | Command-line usage error |
-| 3 | Valid evidence, but the experiment is not completed |
+| 3 | Valid evidence, but experiment not completed |
 
-Validation is read-only. It checks the manifest and referenced active-phase recordings, not physical shutdown, measurement accuracy, file authenticity, or scientific suitability.
-The optional `--phase-root` changes the allowed root for phase references; it defaults to the experiment directory's parent. Do not broaden it merely to bypass a validation failure.
+Validation checks persisted consistency, not measurement accuracy, authenticity, or physical isolation.
+Phase references must be absolute and within the allowed phase root. The default allowed root is the experiment directory's parent. Use `--phase-root` only when you deliberately need a different authorized root, not to bypass an unexplained error.
+Copied recordings can retain absolute references to their original location; do not silently rewrite evidence or analyze a guessed directory.
 
-## 5. Analyze one recorded active phase
+## 5. Analyze the complete experiment
 
-The existing analysis exporter takes a phase recording directory, not the top-level experiment directory. Select the recording referenced by `experiment.json`; do not guess a phase directory name.
-
-The source must no longer be written. The destination must be new, outside the source recording, and have an existing parent directory.
+Only analyze recordings that are no longer being written or modified. Use a new output directory outside the experiment and its phase recordings.
 
 ```powershell
-$PhaseDir = "REPLACE_WITH_REFERENCED_PHASE_RECORDING_DIRECTORY"
-
 New-Item -ItemType Directory -Force .\analysis_outputs | Out-Null
 
-python -m analysis.export_recorded_analysis `
-    "$PhaseDir" `
-    .\analysis_outputs\REPLACE_WITH_NEW_ANALYSIS_DIRECTORY
+python -m smu analyze `
+    "$ExperimentDir" `
+    .\analysis_outputs\REPLACE_WITH_NEW_EXPORT_NAME
 ```
 
-Each successful export writes:
+The output parent must already exist; the export directory itself must not exist.
+`analyze` requires a valid completed experiment. It follows manifest references, not a folder-name search.
+It validates before export and revalidates before successful finalization, but these checks are not a transactional filesystem snapshot. Keep the inputs unchanged throughout.
 
-- `analysis.csv`: per-sample time, power, cumulative charge, and cumulative energy fields
-- `summary.json`: summary calculations, acquisition outcome, and warnings
+A successful export contains:
 
-Existing export directories are not overwritten. An export interrupted after directory creation can leave partial files; do not treat that directory as a completed export.
+```text
+summary.csv
+summary.json
+ANALYSIS_COMPLETE
+phase_<index>_charge_cc_cv/
+    analysis.csv
+    summary.json
+phase_<index>_discharge_cc/
+    analysis.csv
+    summary.json
+```
 
-Positive and negative integrated totals are nonnegative directional magnitudes, not automatically device-labelled delivered/absorbed quantities. Preserve warnings and acquisition outcomes when interpreting results.
+There is one per-phase directory per active phase, including additional cycles. Rest phases do not produce active-phase energy exports.
+The console and combined table report phase identity, sample count, recorded span, signed charge, and signed energy; the CSV also includes directional energy magnitudes and warning counts. Full phase warnings remain in JSON.
 
-A successful export is not proof that the underlying experiment completed successfully.
+Existing exports are not overwritten. An error can leave partial output; treat it as incomplete unless `ANALYSIS_COMPLETE` was written. A completion marker records export finalization, not proof against later modification.
 
-### Experiment-wide analysis
+Signed quantities retain measured signs. Positive and negative energies are nonnegative directional magnitudes, not automatically device-labelled delivered/absorbed energy. Integration covers the first-to-last recorded sample, not unrecorded transitions or rest periods.
 
-A single command to analyze all manifest-referenced phases and generate a combined table is planned, but is not implemented by this README. Until it is added and tested, export each active phase with the command above.
+### Analyze only one phase
 
-## Recording locations
+For an individual manifest-referenced recording:
 
-`output.root_directory` selects the experiment output root. Relative paths are interpreted from the working directory, which should be the repository root.
+```powershell
+python -m smu analyze-phase `
+    REPLACE_PHASE_RECORDING_DIRECTORY `
+    .\analysis_outputs\REPLACE_WITH_NEW_PHASE_EXPORT_NAME
+```
 
-The experiment directory contains `experiment.json` and referenced phase recordings. Active-phase recordings use files such as `metadata.json`, `measurements.csv`, and, for successfully finalized recordings, a `COMPLETE` marker.
+Per-phase analysis is not proof that the overall experiment completed successfully.
 
-Use the experiment manifest to distinguish experiment completion from individual recording finalization. Preserve failed and partial recordings as evidence; do not mark them successful manually.
+## Recording and repository organization
 
-Treat raw recordings as source evidence and analysis outputs as derived artifacts. Review Git tracking deliberately; `.gitignore` does not untrack files already committed.
+`output.root_directory` controls the experiment output root; relative paths depend on the working directory.
+The experiment manifest is `experiment.json`. Active recordings use `metadata.json`, `measurements.csv`, and, for successfully finalized recordings, `COMPLETE`.
+Do not confuse recording finalization, experiment completion, and analysis completion.
 
-## Offline development checks
+| Path | Responsibility |
+|---|---|
+| `smu.py` | Public command routing and experiment-wide analysis |
+| `configs/` | Experiment profiles |
+| `experiments/` | Validation/planning and phase/preconditioning execution |
+| `drivers/` | Instrument/session/channel and SCPI helpers |
+| `acquisition/` | Acquisition and trace transports |
+| `recording/` | Recording lifecycles, CSV, manifests |
+| `analysis/` | Offline validation, calculation, per-phase export |
+| `commissioning/`, `diagnostics/` | Deliberate developer hardware checks |
+| `tests/` | Offline automated tests |
+
+Preserve raw evidence and failed recordings. Derived analysis should be separate.
+Review data tracking deliberately; `.gitignore` does not untrack committed files.
+Historical module-level entry points remain available for compatibility, but use `smu` for everyday work.
+
+## Development checks
+
+Run these as separate commands:
+
+```powershell
+python -m pytest tests/test_smu_cli.py -q
+```
 
 ```powershell
 python -m pyflakes `
+    smu.py `
     drivers `
     acquisition `
     experiments `
@@ -219,35 +242,11 @@ python -m pyflakes `
     commissioning `
     diagnostics `
     tests
+```
 
+```powershell
 python -m pytest tests -q
 ```
 
-Scope lint to project directories rather than `python -m pyflakes .`, which also scans the local virtual environment.
-Do not edit installed dependencies to silence project lint output.
-
-Run the tests under `tests/`; do not substitute execution of hardware diagnostics for the offline suite. Test counts can change as coverage evolves.
-
-## Repository map
-
-| Directory | Responsibility |
-|---|---|
-| `configs/` | Experiment profiles |
-| `experiments/` | Planning, phase control, preconditioning execution, live entry point |
-| `drivers/` | Instrument/session/channel and SCPI helpers |
-| `acquisition/` | Spot/buffered/monitored acquisition and trace transports |
-| `recording/` | Recording lifecycle, streaming CSV, and experiment manifests |
-| `analysis/` | Offline evidence validation and calculation/export |
-| `commissioning/` | Deliberate hardware qualification routines |
-| `diagnostics/` | Developer hardware checks; some share helpers with other checks |
-| `tests/` | Offline automated tests |
-
-Commissioning and diagnostic scripts are not ordinary experiment steps. Some can connect to instruments or enable outputs. Read the specific script and its requirements before use; do not run every script as a smoke test.
-
-## Current limitations
-
-- Separate commands currently implement planning, live execution, validation, and per-phase export.
-- Experiment-wide export and a unified command interface remain separate future changes.
-- No automatic experiment resume/retry or external-supply control.
-- Configuration validation checks consistency with supplied ratings, not correctness of those ratings.
-- No README claim of hardware qualification for every combination of configuration, sampling rate, current, voltage, or DUT.
+Do not lint the entire virtual environment or run hardware diagnostics as a replacement for offline tests.
+Test counts can change as coverage evolves.
