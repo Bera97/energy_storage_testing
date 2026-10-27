@@ -16,6 +16,7 @@ htmlcov/
 # Generated measurement data and analysis outputs
 runs/
 results/
+analysis_outputs/
 
 # Temporary Code Runner files
 tempCodeRunnerFile.py
