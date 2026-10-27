@@ -17,6 +17,7 @@ htmlcov/
 runs/
 results/
 analysis_outputs/
+commissioning_runs/
 
 # Temporary Code Runner files
 tempCodeRunnerFile.py

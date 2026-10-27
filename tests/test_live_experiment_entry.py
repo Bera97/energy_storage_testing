@@ -3,7 +3,6 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
-from pathlib import Path
 import unittest
 from unittest.mock import patch
 

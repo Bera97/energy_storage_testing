@@ -12,7 +12,6 @@ from acquisition.monitored_acquisition import MonitoredResult
 from acquisition.spot_acquisition import SMUReading
 from commissioning.resistor_load import (
     DeadlineMonitoredAcquisition,
-    SETTINGS,
     _qualify_result,
     main,
     run_resistor_test,

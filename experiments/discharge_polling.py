@@ -9,6 +9,12 @@ from experiments.phase_polling import (
     run_phase_polling,
 )
 
+__all__ = [
+    "TracePoll",
+    "run_discharge_polling",
+    "DischargeAcquisitionExhausted",
+    "DischargeShutdownError",
+]
 
 DischargeAcquisitionExhausted = AcquisitionExhausted
 DischargeShutdownError = TraceShutdownError

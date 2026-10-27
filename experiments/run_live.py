@@ -20,7 +20,6 @@ instrument operating envelope, or independent DUT protection.
 The existing `python -m experiments --dry-run` CLI is unchanged.
 """
 
-from datetime import datetime, timezone
 import argparse
 import json
 import math

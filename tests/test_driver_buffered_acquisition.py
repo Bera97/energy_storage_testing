@@ -1,6 +1,6 @@
 """Offline tests for finite timer acquisition."""
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -93,11 +93,23 @@ def test_configure_timer_commands():
     smu._write.assert_any_call(":OUTP1:ON:AUTO OFF")
 
 
-@pytest.mark.parametrize("count", [0, -1, True, 2501])
+@pytest.mark.parametrize(
+    "count",
+    [
+        0,
+        -1,
+        True,
+        BufferedAcquisition.MAX_RECORDS + 1,
+    ],
+)
 def test_invalid_count_rejected(count):
     smu, _ = make_rig()
-    with pytest.raises(ValueError):
+
+    with pytest.raises(ValueError, match="count must be an integer"):
         BufferedAcquisition(smu, 1).configure(count, 0.2)
+
+    smu._write.assert_not_called()
+    smu._query.assert_not_called()
 
 
 def test_interval_shorter_than_aperture_rejected():
