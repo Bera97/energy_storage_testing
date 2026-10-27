@@ -1,4 +1,4 @@
-"""Offline tests for positive current-source commissioning."""
+"""Offline tests for positive current-source checks."""
 
 from contextlib import redirect_stdout
 import io
@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from acquisition.monitored_acquisition import MonitoredResult
 from acquisition.spot_acquisition import SMUReading
-from commissioning.resistor_current_source import (
+from checks.resistor_current_source import (
     _prepare_current_source,
     _qualify_result,
     main,
@@ -102,9 +102,9 @@ class ResistorCurrentSourceTests(unittest.TestCase):
         acquisition = Mock()
 
         with patch(
-            "commissioning.resistor_current_source.SMURanges"
+            "checks.resistor_current_source.SMURanges"
         ) as ranges_class, patch(
-            "commissioning.resistor_current_source."
+            "checks.resistor_current_source."
             "configure_trace_timebase",
             return_value={"offline_fake": True},
         ):
@@ -130,7 +130,7 @@ class ResistorCurrentSourceTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "commissioning.resistor_current_source._new_smu"
+            "checks.resistor_current_source._new_smu"
         ) as factory:
             with redirect_stdout(output):
                 code = main([
@@ -149,15 +149,15 @@ class ResistorCurrentSourceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch(
-                "commissioning.resistor_current_source."
+                "checks.resistor_current_source."
                 "DeadlineMonitoredAcquisition",
                 FakeAcquisition,
             ), patch(
-                "commissioning.resistor_current_source."
+                "checks.resistor_current_source."
                 "_prepare_current_source",
                 return_value={"offline_fake": True},
             ), patch(
-                "commissioning.resistor_current_source."
+                "checks.resistor_current_source."
                 "enable_dc_output"
             ):
                 result, directory = run_current_source_test(
@@ -180,15 +180,15 @@ class ResistorCurrentSourceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch(
-                "commissioning.resistor_current_source."
+                "checks.resistor_current_source."
                 "DeadlineMonitoredAcquisition",
                 FakeAcquisition,
             ), patch(
-                "commissioning.resistor_current_source."
+                "checks.resistor_current_source."
                 "_prepare_current_source",
                 return_value={"offline_fake": True},
             ), patch(
-                "commissioning.resistor_current_source."
+                "checks.resistor_current_source."
                 "enable_dc_output",
                 side_effect=original,
             ):

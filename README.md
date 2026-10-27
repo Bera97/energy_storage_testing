@@ -29,7 +29,7 @@ Verify the actual datasheet, polarity, wiring, sensing, instrument operating env
 Software/instrument shutdown evidence is not proof of physical isolation.
 
 No automatic live retry, experiment resume, or external-power-supply control is provided.
-Do not run commissioning/diagnostic scripts indiscriminately: some connect to hardware or enable outputs.
+Do not run checks/diagnostic scripts indiscriminately: some connect to hardware or enable outputs.
 
 The committed `configs/preconditioning.test_run.yaml` contains specimen-specific settings and placeholder descriptive metadata. It is not a universally safe template.
 
@@ -216,7 +216,7 @@ Do not confuse recording finalization, experiment completion, and analysis compl
 | `acquisition/` | Acquisition and trace transports |
 | `recording/` | Recording lifecycles, CSV, manifests |
 | `analysis/` | Offline validation, calculation, per-phase export |
-| `commissioning/`, `diagnostics/` | Deliberate developer hardware checks |
+| `checks/` | Deliberate developer hardware checks |
 | `tests/` | Offline automated tests |
 
 Preserve raw evidence and failed recordings. Derived analysis should be separate.
@@ -239,8 +239,7 @@ python -m pyflakes `
     experiments `
     recording `
     analysis `
-    commissioning `
-    diagnostics `
+    checks `
     tests
 ```
 
@@ -253,11 +252,11 @@ Test counts can change as coverage evolves.
 
 ## Source consolidation
 The maintained diagnostic scripts are:
-- `diagnostics/check_visa.py`
-- `diagnostics/check_dc_resistor.py`
-- `diagnostics/check_streaming_sink_resistor.py`
-- `diagnostics/check_streaming_sink_duration.py`
-- `diagnostics/check_streaming_delayed_sink_cutoff.py`
+- `checks/check_visa.py`
+- `checks/check_dc_resistor.py`
+- `checks/check_streaming_sink_resistor.py`
+- `checks/check_streaming_sink_duration.py`
+- `checks/check_streaming_delayed_sink_cutoff.py`
 Historical development probes were retired from the current source tree.
 Their removal retires those individual manual commands; it does not
 establish that every old check has an equivalent replacement.

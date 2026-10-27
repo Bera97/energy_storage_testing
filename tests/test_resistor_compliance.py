@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from acquisition.monitored_acquisition import MonitoredResult
 from acquisition.spot_acquisition import SMUReading
-from commissioning.resistor_compliance import (
+from checks.resistor_compliance import (
     _qualify_result,
     main,
     run_compliance_test,
@@ -99,7 +99,7 @@ class ResistorComplianceTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "commissioning.resistor_compliance._new_smu"
+            "checks.resistor_compliance._new_smu"
         ) as factory:
             with redirect_stdout(output):
                 code = main([
@@ -121,15 +121,15 @@ class ResistorComplianceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch(
-                "commissioning.resistor_compliance."
+                "checks.resistor_compliance."
                 "DeadlineMonitoredAcquisition",
                 FakeAcquisition,
             ), patch(
-                "commissioning.resistor_compliance."
+                "checks.resistor_compliance."
                 "_prepare_compliance",
                 return_value={"offline_fake": True},
             ), patch(
-                "commissioning.resistor_compliance.enable_dc_output"
+                "checks.resistor_compliance.enable_dc_output"
             ):
                 result, directory = run_compliance_test(
                     smu,
@@ -151,15 +151,15 @@ class ResistorComplianceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch(
-                "commissioning.resistor_compliance."
+                "checks.resistor_compliance."
                 "DeadlineMonitoredAcquisition",
                 FakeAcquisition,
             ), patch(
-                "commissioning.resistor_compliance."
+                "checks.resistor_compliance."
                 "_prepare_compliance",
                 return_value={"offline_fake": True},
             ), patch(
-                "commissioning.resistor_compliance.enable_dc_output",
+                "checks.resistor_compliance.enable_dc_output",
                 side_effect=original,
             ):
                 with self.assertRaises(OSError) as caught:
