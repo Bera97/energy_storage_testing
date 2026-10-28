@@ -10,6 +10,7 @@ import sys
 
 ROUTES = {
     "plan": "experiments.run_live",
+    "dual-probe": "experiments.dual_instrument_io",
     "dual-plan": "experiments.dual_preconditioning",
     "dual-simulate": "experiments.dual_coordinator",
     "run": "experiments.run_live",

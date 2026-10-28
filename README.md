@@ -295,3 +295,20 @@ A deliberate fault can be injected using `--fail-channel 1` or
 All reports explicitly identify their evidence as simulated.
 The CLI does not provide a real dual-channel execution backend.
 Do not run two single-channel controllers against the same instrument.
+## Dual-channel outputs-OFF probe
+`python -m smu dual-probe --config FILE1 --config FILE2`
+validates the profiles without constructing an instrument.
+Adding `--connect --expected-serial SERIAL` opens one session,
+verifies identity, attempts shutdown of both channels, configures
+shared measurement formatting and per-channel NPLC while outputs
+are OFF, verifies channel-local stopping, then attempts final
+global shutdown and closes the session.
+Use this only on an isolated bench with both DUTs disconnected and
+no other controller using the instrument. It changes instrument
+configuration; it is not a passive identity query.
+The probe never enables output or starts acquisition.
+It is not concurrent experiment execution or a timing qualification.
+A stop readback does not establish electrical isolation.
+`session_close_returned` means the existing driver's close method
+returned; it is not independent proof that every resource closed.
+The simulated coordinator remains simulation-only.
