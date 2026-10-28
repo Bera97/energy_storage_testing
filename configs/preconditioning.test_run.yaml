@@ -25,7 +25,7 @@ dut:
   nominal_capacitance_f: 0.22
 
   ratings:
-    minimum_voltage_v: 0
+    minimum_voltage_v: 0.0
     maximum_voltage_v: 5.55
     maximum_continuous_charge_current_a: 0.01
     maximum_continuous_discharge_current_a: 0.01
@@ -69,7 +69,7 @@ charge:
   maximum_cv_duration_s: 1800
 
 rest:
-  after_charge_s: 120
+  after_charge_s: 30
   after_discharge_s: 30
 
 discharge:
@@ -79,7 +79,7 @@ discharge:
     basis: rated_max_discharge_fraction
     factor: 0.25
 
-  cutoff_voltage_v: 0.0
+  cutoff_voltage_v: 0.05
   maximum_duration_s: 3600
 
 output:
