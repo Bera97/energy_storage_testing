@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import unittest
 
-from experiments.charge_polling import (
+from experiments.phase_polling import (
     ChargeAcquisitionExhausted,
     ChargeShutdownError,
     TracePoll,

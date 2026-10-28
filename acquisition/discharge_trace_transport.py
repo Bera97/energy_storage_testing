@@ -21,7 +21,7 @@ from experiments.phase_safety_monitor import (
     PhaseSafetyMonitor,
 )
 
-from experiments.discharge_polling import (
+from experiments.phase_polling import (
     TracePoll,
     run_discharge_polling,
 )

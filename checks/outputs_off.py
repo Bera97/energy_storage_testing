@@ -1,4 +1,4 @@
-"""Explicit outputs-OFF commissioning.
+"""Explicit outputs-OFF checks.
 
 Default:
     Dry run. No instrument construction or connection.
@@ -186,7 +186,7 @@ def _new_smu(resource, timeout_ms, visa_library):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=(
-            "Outputs-OFF commissioning. Defaults to dry run. "
+            "Outputs-OFF checks. Defaults to dry run. "
             "Never enables output or initiates acquisition."
         ),
         epilog=(
