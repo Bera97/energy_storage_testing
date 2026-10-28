@@ -53,3 +53,9 @@ discharge:
   maximum_duration_s: 3600
 output:
   root_directory: runs
+
+# Reviewed execution settings; --execute is still required on the CLI.
+execution:
+  expected_serial: MY61391173
+  maximum_voltage_v: 5.55
+  maximum_current_a: 0.1

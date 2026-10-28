@@ -73,7 +73,6 @@ def rig(pair, monkeypatch):
                 next_sample += 0.2
             task._test_next_sample = next_sample
     options = dict(
-        qualification_run=True,
         clock=clock,
         sleep=sleep,
         session_factory=session_factory,
@@ -136,14 +135,13 @@ def test_existing_batch_is_not_overwritten(rig, tmp_path):
         execute(plan, directory, "TESTSERIAL", **options)
     assert sentinel.read_text(encoding="utf-8") == "keep"
     assert driver.is_connected is False
-def test_execution_requires_explicit_authorization(rig, tmp_path):
+def test_execution_no_longer_requires_qualification_flag(rig, tmp_path):
     plan, driver, options = rig
-    options["qualification_run"] = False
-    directory = tmp_path / "unauthorized"
-    with pytest.raises(ValueError, match="authorization"):
-        execute(plan, directory, "TESTSERIAL", **options)
-    assert not directory.exists()
-    assert driver.is_connected is False
+    directory = tmp_path / "without_qualification_flag"
+    report = execute(plan, directory, "TESTSERIAL", **options)
+    assert report["state"] == "completed"
+    assert driver.closed is True
+    assert check_batch(directory)["valid"] is True
 def test_public_preview_does_not_construct_instrument(
     pair, tmp_path, monkeypatch, capsys
 ):

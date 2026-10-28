@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from experiments.execution_settings import validate_execution
+
 from experiments.current_settings import (
     parse_charge_current,
     resolve_currents,
@@ -136,7 +138,11 @@ def validate_config(document):
             "discharge",
             "output",
         ),
+        optional=("execution",),
     )
+
+    if "execution" in config:
+        validate_execution(config["execution"])
 
     if (
         type(config["schema_version"]) is not int

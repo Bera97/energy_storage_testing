@@ -1,23 +1,6 @@
-"""Explicit live preconditioning entry point.
-
-Default: hardware-free preview.
-
-Live execution requires:
-- --execute
-- --experiment-id
-- --confirm-specimen matching the configuration
-- --expected-serial
-- --max-voltage-v
-- --max-current-a
-
-Uses the existing executor, backend, runner, and manifest lifecycle.
-
-No automatic resume or retry.
-No external-supply control.
-No automatic verification of datasheet correctness, physical wiring,
-instrument operating envelope, or independent DUT protection.
-
-The existing `python -m experiments --dry-run` CLI is unchanged.
+"""Supervised YAML-configured preconditioning; preview unless --execute.
+Legacy execution arguments remain compatible; no confirmation prompt.
+No automatic retry, resume, or external-supply control.
 """
 
 import argparse
@@ -26,6 +9,8 @@ import math
 from pathlib import Path
 import re
 import sys
+
+from experiments.execution_settings import resolve_single, require_ceilings
 
 from experiments.acquisition_budget import build_acquisition_plan
 from experiments.config import (
@@ -155,7 +140,7 @@ def execute_live(
     document,
     *,
     experiment_id,
-    confirm_specimen,
+    confirm_specimen=None,
     expected_serial,
     maximum_voltage_v,
     maximum_current_a,
@@ -189,7 +174,7 @@ def execute_live(
             "digits, underscores, or hyphens."
         )
 
-    if confirm_specimen != config["dut"]["specimen_id"]:
+    if confirm_specimen is not None and confirm_specimen != config["dut"]["specimen_id"]:
         raise ValueError(
             "--confirm-specimen must exactly match "
             "dut.specimen_id."
@@ -236,7 +221,8 @@ def execute_live(
             "execution_mode": "live",
             "configuration": config,
             "expected_instrument_serial": expected_serial,
-            "confirmed_specimen": confirm_specimen,
+            "specimen_id": config["dut"]["specimen_id"],
+            "specimen_confirmation_required": False,
             "operator_preflight_ceilings": {
                 "maximum_voltage_v": voltage_ceiling,
                 "maximum_current_a": current_ceiling,
@@ -427,7 +413,7 @@ def main(argv=None):
     mode.add_argument("--execute", action="store_true")
 
     parser.add_argument("--experiment-id")
-    parser.add_argument("--confirm-specimen")
+    parser.add_argument("--confirm-specimen", help=argparse.SUPPRESS)
     parser.add_argument("--expected-serial")
     parser.add_argument("--max-voltage-v", type=float)
     parser.add_argument("--max-current-a", type=float)
@@ -445,29 +431,33 @@ def main(argv=None):
 
     arguments = parser.parse_args(argv)
 
-    if arguments.execute:
-        required = {
-            "--experiment-id": arguments.experiment_id,
-            "--confirm-specimen": arguments.confirm_specimen,
-            "--expected-serial": arguments.expected_serial,
-            "--max-voltage-v": arguments.max_voltage_v,
-            "--max-current-a": arguments.max_current_a,
-        }
-
-        missing = [
-            name
-            for name, value in required.items()
-            if value is None
-        ]
-
-        if missing:
-            parser.error(
-                "--execute requires " + ", ".join(missing)
-            )
 
     try:
         validated = load_config(arguments.config)
         document = validated["config"]
+        settings = resolve_single(document, arguments)
+        if arguments.execute:
+            required = {
+                "--experiment-id": arguments.experiment_id,
+                "--expected-serial": arguments.expected_serial,
+                "--max-voltage-v": arguments.max_voltage_v,
+                "--max-current-a": arguments.max_current_a,
+            }
+
+            missing = [
+                name
+                for name, value in required.items()
+                if value is None
+            ]
+
+            if missing:
+                parser.error(
+                    "--execute requires " + ", ".join(missing)
+                )
+
+        require_ceilings(settings, execution_preview(
+            document, maximum_records=arguments.maximum_records
+        ))
 
         if not arguments.execute:
             preview = execution_preview(
