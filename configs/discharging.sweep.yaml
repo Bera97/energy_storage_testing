@@ -1,0 +1,14 @@
+# Planning example only; reference charging is not claimed optimal.
+profile: preconditioning.channel1.yaml
+sweep:
+  schema_version: 1
+  kind: discharging
+  values: [0.1, 0.25, 0.5, 0.75, 1]
+  repetitions: 3
+  reference:
+    charge_current:
+      c_rate: 2
+  rest_after_charge_s: 900
+  rest_after_discharge_s: 900
+  charge_maximum_duration_s: 19800
+  discharge_maximum_duration_s: 3600

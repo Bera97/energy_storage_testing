@@ -163,3 +163,22 @@ Optional transport/planning overrides remain available through command-specific 
 | `analysis/` | Offline validation, calculation, phase export |
 | `checks/` | Deliberately invoked hardware diagnostics |
 | `tests/` | Offline automated tests |
+
+## Charging/discharging rate-sweep planning
+This increment is offline planning only; there is no live sweep executor.
+```powershell
+python -m smu sweep-plan --config configs/charging.sweep.yaml
+python -m smu sweep-plan --config configs/discharging.sweep.yaml
+```
+Add `--json` for the full plan and configuration snapshots.
+The profile path is relative to the sweep YAML file.
+Charging values are C-rates; discharging values are fractions of rated
+maximum continuous discharge current. Points run in the listed order,
+with the configured repetitions at each point.
+Example rests are 900 seconds after both charge and discharge.
+Reference charge current, termination criteria, specimen ratings, and
+timeouts require review; the examples are not approved test protocols.
+Every point uses the existing finite per-phase acquisition budget.
+Oversized phases and invalid currents are rejected, not clamped or skipped.
+There is no buffer rollover, automatic sample-rate reduction, or
+first-cycle state preparation in this planning increment.

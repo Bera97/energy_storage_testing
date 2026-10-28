@@ -1,0 +1,13 @@
+# Planning example only; review the referenced specimen profile.
+profile: preconditioning.channel1.yaml
+sweep:
+  schema_version: 1
+  kind: charging
+  values: [0.2, 0.5, 1, 2, 5, 10]
+  repetitions: 3
+  reference:
+    discharge_fraction: 0.5
+  rest_after_charge_s: 900
+  rest_after_discharge_s: 900
+  charge_maximum_duration_s: 19800
+  discharge_maximum_duration_s: 3600

@@ -9,6 +9,7 @@ import sys
 
 
 ROUTES = {
+    "sweep-plan": "experiments.rate_sweep",
     "plan": "experiments.run_live",
     "dual-run": "experiments.dual_live",
     "dual-check": "experiments.dual_live",
