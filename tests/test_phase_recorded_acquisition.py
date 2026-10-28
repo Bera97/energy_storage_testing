@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from test_experiment_phase_run import ExperimentPhaseRunTests
 
-from recording.phase_recorded_acquisition import (
+from recording.experiment_phase_run import (
     acquire_prepared_phase_and_finalize,
 )
 

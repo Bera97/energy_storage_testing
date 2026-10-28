@@ -1,4 +1,4 @@
-"""Offline tests for outputs-OFF commissioning.
+"""Offline tests for outputs-OFF checks.
 
 No instrument connection or real output enabling.
 """
@@ -9,7 +9,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from commissioning.outputs_off import (
+from checks.outputs_off import (
     commission_outputs_off,
     main,
 )
@@ -169,7 +169,7 @@ class OutputsOffCommissioningTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "commissioning.outputs_off._new_smu"
+            "checks.outputs_off._new_smu"
         ) as factory:
             with redirect_stdout(output):
                 code = main([
@@ -188,7 +188,7 @@ class OutputsOffCommissioningTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "commissioning.outputs_off._new_smu",
+            "checks.outputs_off._new_smu",
             return_value=self.smu,
         ):
             with redirect_stdout(output):
@@ -213,7 +213,7 @@ class OutputsOffCommissioningTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "commissioning.outputs_off._new_smu",
+            "checks.outputs_off._new_smu",
             return_value=self.smu,
         ):
             with redirect_stdout(output):

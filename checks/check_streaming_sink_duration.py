@@ -1,20 +1,19 @@
-"""Delayed voltage cutoff while streaming sink measurements to CSV.
+"""Supervised, approximately three-minute streaming sink check.
 
 DPS150 OUT+ -> 6.93 kOhm resistor -> CH1 FORCE HI
 DPS150 OUT- --------------------> CH1 FORCE LO
 
 DMM across SMU terminals in DC volts.
 Channel 2 disconnected. No cell/capacitor.
-DPS150: initially 2.00 V / 10 mA, output OFF.
+DPS150: 2.00 V / 10 mA, initially OFF.
 
-After ACQUISITION STARTING:
-    Wait at least 5 seconds.
-    Reduce DPS150 to 1.60 V with its output still enabled.
+One finite acquisition:
+    900 records
+    0.2-second instrument interval
+    179.8-second first-to-last nominal sample span
 
-Software cutoff: measured SMU voltage <= 1.10 V.
-
-Recording files are created before enabling SMU output.
-External supply output is manually controlled.
+No buffer rearming. No external-supply automation.
+CSV is written and flushed after each retrieved nonempty batch.
 """
 
 import csv
@@ -24,9 +23,10 @@ import json
 import logging
 import math
 from pathlib import Path
+import statistics
 from uuid import uuid4
 
-from diagnostics.check_dc_resistor import (
+from checks.check_dc_resistor import (
     VISA_ADDRESS,
     checked,
     configure_channel,
@@ -43,15 +43,15 @@ from recording.recorded_acquisition import (
 from recording.streaming_run import StreamingRun
 
 
-COUNT = 150
+COUNT = 900
 INTERVAL_S = 0.2
-CUTOFF_V = 1.10
-MIN_INITIAL_RECORDS = 10
+TIMEOUT_S = 195.0
+TIMING_TOLERANCE_S = 0.03
 BASE_DIRECTORY = Path("runs")
 
 
 def verify_export(run, result, run_id):
-    """Compare saved CSV and metadata against the returned result."""
+    """Check finalized files against the returned acquisition result."""
     if not run.finalized:
         raise RuntimeError("Run was not finalized.")
 
@@ -59,7 +59,7 @@ def verify_export(run, result, run_id):
         raise RuntimeError("CSV writer is still open.")
 
     if run.writer.failed:
-        raise RuntimeError("CSV writer reports failure.")
+        raise RuntimeError("CSV writer reports a failure.")
 
     if not (run.directory / "COMPLETE").is_file():
         raise RuntimeError("COMPLETE marker is missing.")
@@ -94,6 +94,16 @@ def verify_export(run, result, run_id):
     ):
         raise RuntimeError("Unexpected saved run identification/format.")
 
+    metadata = document["metadata"]
+
+    if (
+        metadata["requested_count"] != COUNT
+        or metadata["interval_s"] != INTERVAL_S
+        or metadata["stop_limits"]["min_voltage_v"] != 1.15
+        or metadata["stop_limits"]["max_voltage_v"] != 1.45
+    ):
+        raise RuntimeError("Saved acquisition configuration is incorrect.")
+
     outcome = document["outcome"]
 
     if (
@@ -103,21 +113,19 @@ def verify_export(run, result, run_id):
         or outcome["requested_count"] != COUNT
         or outcome["retained_count"] != retained
         or outcome["records_flushed"] != retained
+        or outcome["triggering_record_index"] is not None
+        or outcome["triggering_reading"] is not None
         or outcome["fault_record_indices"] != []
     ):
         raise RuntimeError("Unexpected saved outcome metadata.")
-
-    if (
-        document["metadata"]["stop_limits"]["min_voltage_v"]
-        != CUTOFF_V
-    ):
-        raise RuntimeError("Saved cutoff voltage is incorrect.")
 
     for index, (row, reading) in enumerate(
         zip(rows, result.readings)
     ):
         if int(row["record_index"]) != index:
-            raise RuntimeError("CSV record index mismatch.")
+            raise RuntimeError(
+                f"CSV record index mismatch at row {index}."
+            )
 
         expected_numeric = {
             "instrument_timestamp_s": reading.timestamp_s,
@@ -142,118 +150,65 @@ def verify_export(run, result, run_id):
                 f"CSV channel/status mismatch at record {index}."
             )
 
-    trigger = result.triggering_reading
-    saved_index = outcome["triggering_record_index"]
 
-    if trigger is None:
-        raise RuntimeError("Triggering record is missing.")
-
-    if type(saved_index) is not int:
-        raise RuntimeError("Saved triggering index is not an integer.")
-
-    if not 0 <= saved_index < retained:
-        raise RuntimeError("Saved triggering index is out of bounds.")
-
-    if result.readings[saved_index] != trigger:
+def validate_measurements(result):
+    """Apply broad functional checks to the completed run."""
+    if result.stop_reason != "completed":
         raise RuntimeError(
-            "Saved triggering index points to the wrong record."
+            f"Expected completed; received {result.stop_reason!r}."
         )
-
-    if outcome["triggering_reading"] != asdict(trigger):
-        raise RuntimeError("Saved triggering measurement is incorrect.")
-
-    trigger_row = rows[saved_index]
 
     if (
-        float(trigger_row["instrument_timestamp_s"])
-        != trigger.timestamp_s
-        or float(trigger_row["voltage_v"]) != trigger.voltage_v
-        or float(trigger_row["current_a"]) != trigger.current_a
-        or int(trigger_row["status"]) != trigger.status
+        result.requested_count != COUNT
+        or len(result.readings) != COUNT
     ):
-        raise RuntimeError(
-            "Triggering CSV row differs from the returned result."
-        )
+        raise RuntimeError("Unexpected acquisition record count.")
 
-    return saved_index
+    if result.triggering_reading is not None:
+        raise RuntimeError("Unexpected triggering record.")
 
-
-def validate_delayed_crossing(result, trigger_index):
-    """Check that normal initial records precede a later crossing."""
-    records = result.readings
-    trigger = result.triggering_reading
-
-    if result.stop_reason != "voltage_min":
-        raise RuntimeError(
-            f"Expected voltage_min; received {result.stop_reason!r}."
-        )
-
-    if result.requested_count != COUNT:
-        raise RuntimeError("Unexpected requested_count.")
-
-    if not MIN_INITIAL_RECORDS < len(records) < COUNT:
-        raise RuntimeError(
-            f"Unexpected retained count: {len(records)}/{COUNT}."
-        )
-
-    if trigger is None:
-        raise RuntimeError("Triggering record is missing.")
-
-    if trigger_index < MIN_INITIAL_RECORDS:
-        raise RuntimeError(
-            "Cutoff occurred too early to validate a delayed crossing."
-        )
-
-    for reading in records:
+    for index, reading in enumerate(result.readings):
         if (
-            reading.has_fault
+            reading.channel != 1
+            or reading.has_fault
             or reading.in_compliance
             or not reading.current_source
-            or not 0.75 <= reading.voltage_v <= 1.50
+            or not 1.15 <= reading.voltage_v <= 1.45
             or not -105e-6 <= reading.current_a <= -95e-6
             or reading.power_w >= 0
         ):
             raise RuntimeError(
-                f"Unexpected retained reading: {reading!r}"
+                f"Unexpected record {index}: {reading!r}"
             )
-
-    if any(
-        not 1.20 <= reading.voltage_v <= 1.45
-        for reading in records[:MIN_INITIAL_RECORDS]
-    ):
-        raise RuntimeError(
-            "Initial records were not in the expected starting band."
-        )
-
-    if any(
-        reading.voltage_v <= CUTOFF_V
-        for reading in records[:trigger_index]
-    ):
-        raise RuntimeError(
-            "An earlier retained record already satisfied the cutoff."
-        )
-
-    previous = records[trigger_index - 1]
-
-    if not previous.voltage_v > CUTOFF_V >= trigger.voltage_v:
-        raise RuntimeError(
-            "Adjacent records do not bracket the cutoff."
-        )
 
     intervals = [
         later.timestamp_s - earlier.timestamp_s
-        for earlier, later in zip(records, records[1:])
+        for earlier, later in zip(
+            result.readings, result.readings[1:]
+        )
     ]
 
     if any(
-        abs(interval - INTERVAL_S) > 0.03
+        abs(interval - INTERVAL_S) > TIMING_TOLERANCE_S
         for interval in intervals
     ):
         raise RuntimeError(
             "Timestamp spacing failed the broad timing check."
         )
 
-    return previous
+    actual_span = (
+        result.readings[-1].timestamp_s
+        - result.readings[0].timestamp_s
+    )
+    expected_span = (COUNT - 1) * INTERVAL_S
+
+    if abs(actual_span - expected_span) > TIMING_TOLERANCE_S:
+        raise RuntimeError(
+            f"Unexpected timestamp span: {actual_span} s; "
+            f"expected approximately {expected_span} s."
+        )
+
+    return intervals, actual_span
 
 
 def run_check(smu):
@@ -278,8 +233,8 @@ def run_check(smu):
             raise RuntimeError("Voltage-compliance readback mismatch.")
 
         limits = StopLimits(
-            min_voltage_v=CUTOFF_V,
-            max_voltage_v=1.50,
+            min_voltage_v=1.15,
+            max_voltage_v=1.45,
             min_current_a=-105e-6,
             max_current_a=-95e-6,
             stop_on_compliance=True,
@@ -287,15 +242,15 @@ def run_check(smu):
 
         run_id = (
             datetime.now(timezone.utc).strftime(
-                "streaming_delayed_sink_%Y%m%dT%H%M%S_%fZ"
+                "streaming_sink_duration_%Y%m%dT%H%M%S_%fZ"
             )
             + "_"
             + uuid4().hex[:8]
         )
 
         metadata = {
-            "diagnostic": "check_streaming_delayed_sink_cutoff",
-            "expected_stop_reason": "voltage_min",
+            "diagnostic": "check_streaming_sink_duration",
+            "expected_stop_reason": "completed",
             "instrument_identity": smu.identity,
             "visa_address": VISA_ADDRESS,
             "channel": 1,
@@ -308,22 +263,22 @@ def run_check(smu):
             "four_wire": checked(smu, channel.get_four_wire),
             "requested_count": COUNT,
             "interval_s": INTERVAL_S,
+            "nominal_first_to_last_span_s": (
+                (COUNT - 1) * INTERVAL_S
+            ),
+            "acquisition_timeout_s": TIMEOUT_S,
             "stop_limits": asdict(limits),
             "nominal_series_resistance_ohm": 6930.0,
             "external_supply": {
                 "model": "FNIRSI DPS150",
-                "initial_nominal_voltage_v": 2.0,
-                "final_target_voltage_v": 1.6,
+                "nominal_voltage_v": 2.0,
                 "current_limit_a": 0.010,
                 "control": "manual",
-                "adjustment_instruction": (
-                    "Wait at least 5 seconds after acquisition "
-                    "starting message, then reduce to 1.60 V"
-                ),
             },
-            "minimum_initial_records_checked": MIN_INITIAL_RECORDS,
             "dut": "series resistor and external supply; no storage cell",
             "flush_policy": "after header and each retrieved nonempty batch",
+            "supervised": True,
+            "buffer_rearming": False,
         }
 
         run = StreamingRun(
@@ -357,7 +312,8 @@ def run_check(smu):
             f"\nRun directory created: {run.directory.resolve()}\n"
             "Initial metadata saved; CSV header written and flushed.\n"
             f"Requested records: {COUNT}\n"
-            f"Lower-voltage cutoff: {CUTOFF_V} V\n"
+            f"Instrument interval: {INTERVAL_S} s\n"
+            "Approximate acquisition duration: 3 minutes.\n"
             "SMU outputs are still OFF.",
             flush=True,
         )
@@ -365,11 +321,10 @@ def run_check(smu):
         input(
             "\nEnable DPS150 at 2.00 V / 10 mA.\n"
             "Confirm DMM approximately +2 V with SMU output OFF.\n"
-            "After ACQUISITION STARTING, wait at least 5 seconds,\n"
-            "then reduce DPS150 to 1.60 V with its output still ON.\n"
-            "Do not increase above 2.00 V or change wiring.\n"
+            "Leave DPS150 at 2.00 V throughout the run.\n"
+            "Remain at the setup; no progress messages during acquisition.\n"
             "If incorrect, turn DPS150 OFF and Ctrl+C.\n"
-            "Otherwise press Enter to begin: "
+            "Otherwise press Enter to enable sinking: "
         )
 
         enable_dc_output(
@@ -380,9 +335,9 @@ def run_check(smu):
         )
 
         print(
-            "\nACQUISITION STARTING.\n"
-            "Wait at least 5 seconds, then reduce DPS150 to 1.60 V.\n"
-            "No further adjustment prompt will appear.",
+            "\nACQUISITION STARTING: approximately 3 minutes.\n"
+            "Do not adjust the supply or wiring.\n"
+            "To cancel: Ctrl+C and turn DPS150 output OFF.",
             flush=True,
         )
 
@@ -390,7 +345,7 @@ def run_check(smu):
             acquisition,
             run,
             limits=limits,
-            timeout_s=35.0,
+            timeout_s=TIMEOUT_S,
             poll_interval_s=0.05,
         )
 
@@ -412,10 +367,6 @@ def run_check(smu):
             flush=True,
         )
         print(
-            f"Triggering record: {result.triggering_reading!r}",
-            flush=True,
-        )
-        print(
             f"PC time to decision: "
             f"{result.decision_elapsed_s:.6f} s",
             flush=True,
@@ -430,28 +381,47 @@ def run_check(smu):
             flush=True,
         )
 
-        trigger_index = verify_export(run, result, run_id)
-        previous = validate_delayed_crossing(
-            result,
-            trigger_index,
-        )
+        intervals, actual_span = validate_measurements(result)
+        verify_export(run, result, run_id)
+
+        voltages = [r.voltage_v for r in result.readings]
+        currents_ua = [
+            r.current_a * 1e6 for r in result.readings
+        ]
 
         print(
-            f"Above-cutoff records before trigger: {trigger_index}",
+            f"Instrument first-to-last span: {actual_span:.9g} s",
             flush=True,
         )
         print(
-            f"Last above-cutoff record: {previous!r}",
+            "Interval min/mean/max: "
+            f"{min(intervals):.9g} / "
+            f"{statistics.mean(intervals):.9g} / "
+            f"{max(intervals):.9g} s",
             flush=True,
         )
         print(
-            f"Verified triggering CSV index: {trigger_index}",
+            "Voltage min/mean/max: "
+            f"{min(voltages):.9g} / "
+            f"{statistics.mean(voltages):.9g} / "
+            f"{max(voltages):.9g} V",
             flush=True,
         )
         print(
-            "Incremental CSV, final metadata, and delayed trigger "
-            "mapping read back correctly.\n"
-            "Streaming delayed sink cutoff diagnostic passed.",
+            "Current min/mean/max: "
+            f"{min(currents_ua):.9g} / "
+            f"{statistics.mean(currents_ua):.9g} / "
+            f"{max(currents_ua):.9g} uA",
+            flush=True,
+        )
+        print(
+            f"Observed statuses: "
+            f"{sorted({r.status for r in result.readings})}",
+            flush=True,
+        )
+        print(
+            "All CSV values and final metadata read back correctly.\n"
+            "Streaming sink duration diagnostic passed.",
             flush=True,
         )
 
@@ -461,7 +431,7 @@ def run_check(smu):
             flush=True,
         )
 
-        # Attempt instrument cleanup before further file operations.
+        # Instrument cleanup before additional file operations.
         try:
             smu.shutdown()
         except Exception as cleanup_error:
@@ -503,13 +473,14 @@ def main():
     )
 
     print(
-        "Existing series-resistor sink wiring only.\n"
+        "Supervised approximately three-minute sink test.\n"
+        "Existing series-resistor wiring only.\n"
         "DPS150 OUT+ -> 6.93 kOhm -> CH1 FORCE HI\n"
         "DPS150 OUT- -> CH1 FORCE LO\n"
         "DMM across SMU terminals in DC volts.\n"
         "Channel 2 disconnected. No cell/capacitor.\n"
         "DPS150 not connected to PC.\n"
-        "DPS150 initially 2.00 V / 10 mA, output OFF.",
+        "DPS150: 2.00 V / 10 mA, output OFF.",
         flush=True,
     )
 

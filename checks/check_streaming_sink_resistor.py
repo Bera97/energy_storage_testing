@@ -24,7 +24,7 @@ import math
 from pathlib import Path
 from uuid import uuid4
 
-from diagnostics.check_dc_resistor import (
+from checks.check_dc_resistor import (
     VISA_ADDRESS,
     checked,
     configure_channel,

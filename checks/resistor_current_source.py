@@ -24,8 +24,8 @@ from statistics import fmean
 import time
 
 from acquisition.monitored_acquisition import StopLimits
-from commissioning.outputs_off import _new_smu
-from commissioning.resistor_load import (
+from checks.outputs_off import _new_smu
+from checks.resistor_load import (
     DeadlineMonitoredAcquisition,
     _cleanup_preserving_original,
 )

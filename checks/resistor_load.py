@@ -31,7 +31,7 @@ from acquisition.monitored_acquisition import (
     MonitoredAcquisition,
     StopLimits,
 )
-from commissioning.outputs_off import _new_smu
+from checks.outputs_off import _new_smu
 from drivers.dc_output import enable_dc_output
 from drivers.shutdown_reporting import attempt_shutdown_with_report
 from drivers.smu_ranges import SMURanges

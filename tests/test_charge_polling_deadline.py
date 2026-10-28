@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 import unittest
 
-from experiments.charge_polling import (
+from experiments.phase_polling import (
     TracePoll,
     run_charge_polling,
 )

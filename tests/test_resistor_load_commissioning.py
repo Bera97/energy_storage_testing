@@ -1,4 +1,4 @@
-"""Offline tests for resistor-load commissioning."""
+"""Offline tests for resistor-load checks."""
 
 from contextlib import redirect_stdout
 import io
@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from acquisition.monitored_acquisition import MonitoredResult
 from acquisition.spot_acquisition import SMUReading
-from commissioning.resistor_load import (
+from checks.resistor_load import (
     DeadlineMonitoredAcquisition,
     _qualify_result,
     main,
@@ -113,7 +113,7 @@ class ResistorLoadCommissioningTests(unittest.TestCase):
         acquisition.host_deadline_s = 1.0
 
         with patch(
-            "commissioning.resistor_load.time.monotonic",
+            "checks.resistor_load.time.monotonic",
             return_value=2.0,
         ):
             with self.assertRaises(TimeoutError):
@@ -123,7 +123,7 @@ class ResistorLoadCommissioningTests(unittest.TestCase):
         output = io.StringIO()
 
         with patch(
-            "commissioning.resistor_load._new_smu"
+            "checks.resistor_load._new_smu"
         ) as factory:
             with redirect_stdout(output):
                 code = main([
@@ -153,14 +153,14 @@ class ResistorLoadCommissioningTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch(
-                "commissioning.resistor_load."
+                "checks.resistor_load."
                 "DeadlineMonitoredAcquisition",
                 FakeAcquisition,
             ), patch(
-                "commissioning.resistor_load._prepare",
+                "checks.resistor_load._prepare",
                 return_value={"offline_fake": True},
             ), patch(
-                "commissioning.resistor_load.enable_dc_output"
+                "checks.resistor_load.enable_dc_output"
             ) as enable:
                 result, directory = run_resistor_test(
                     smu,
@@ -184,14 +184,14 @@ class ResistorLoadCommissioningTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch(
-                "commissioning.resistor_load."
+                "checks.resistor_load."
                 "DeadlineMonitoredAcquisition",
                 FakeAcquisition,
             ), patch(
-                "commissioning.resistor_load._prepare",
+                "checks.resistor_load._prepare",
                 return_value={"offline_fake": True},
             ), patch(
-                "commissioning.resistor_load.enable_dc_output",
+                "checks.resistor_load.enable_dc_output",
                 side_effect=original,
             ):
                 with self.assertRaises(OSError) as caught:
