@@ -71,15 +71,29 @@ class ChannelTraceAcquisition:
         self.state = "new"
         self.count = None
         self.readings = []
+
     def _query(self, command):
         self.session._require_connected()
-        response = self.session.smu._query(command)
-        self.session.smu.check_errors()
-        return response.strip()
+        try:
+            response = self.session.smu._query(command)
+            self.session.smu.check_errors()
+            return response.strip()
+        except Exception as error:
+            error.add_note(
+                f"Dual trace CH{self.channel} query: {command}"
+            )
+            raise
+
     def _write(self, command):
         self.session._require_connected()
-        self.session.smu._write(command)
-        self.session.smu.check_errors()
+        try:
+            self.session.smu._write(command)
+            self.session.smu.check_errors()
+        except Exception as error:
+            error.add_note(
+                f"Dual trace CH{self.channel} write: {command}"
+            )
+            raise
     def _number(self, command):
         value = float(self._query(command))
         if not math.isfinite(value) or abs(value) >= 9e37:

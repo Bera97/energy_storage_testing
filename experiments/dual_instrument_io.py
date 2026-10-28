@@ -149,6 +149,30 @@ class DualInstrumentSession:
                 raise RuntimeError(
                     "Both outputs must report OFF before shared setup."
                 )
+
+        before = self.smu._query(":SYST:GRO:DEF?")
+        self.smu.check_errors()
+        self.smu._write(":SYST:GRO:DEF (@1),(@2)")
+        self.smu.check_errors()
+        completion = self.smu._query("*OPC?")
+        self.smu.check_errors()
+        if completion.strip() not in ("1", "+1"):
+            raise RuntimeError(
+                "Trigger-group operation completion was not confirmed."
+            )
+        after = self.smu._query(":SYST:GRO:DEF?")
+        self.smu.check_errors()
+        normalized = "".join(after.split())
+        if normalized not in ("(@1),(@2)", "(@2),(@1)"):
+            raise RuntimeError(
+                "Channels did not report independent trigger groups: "
+                + repr(after)
+            )
+        self.trigger_group_evidence = {
+            "before": before.strip(),
+            "after": after.strip(),
+            "independent": True,
+        }
         self.smu._write(":FORM:SREG ASC")
         self.smu.check_errors()
         for preview in self.plan["channels"]:
@@ -231,6 +255,7 @@ def main(argv=None):
             session.configure_shared()
 
             report["trace_clock"] = deepcopy(session.trace_clock_evidence)
+            report["trigger_group"] = deepcopy(session.trigger_group_evidence)
             for channel in (1, 2):
                 session.stop_channel(channel)
             report["channel_stop_evidence"] = deepcopy(

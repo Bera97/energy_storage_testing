@@ -79,7 +79,7 @@ class TraceSMU(io_tests.FakeSMU):
             return "SENS"
         if command.endswith(":TST:FORM?"):
             return "ABS"
-        raise AssertionError(f"Unexpected query: {command}")
+        return super()._query(command)
 @pytest.fixture
 def rig(pair):
     driver = TraceSMU()

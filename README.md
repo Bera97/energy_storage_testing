@@ -343,3 +343,34 @@ command. The simulation-only coordinator guard remains unchanged.
 Synchronous configuration and file/VISA operations can delay servicing
 of another channel. Bounded trace batches do not establish a hard
 response-time guarantee; joint timing still requires qualification.
+## Experimental supervised dual-channel execution
+The development components are integrated by `smu dual-run`.
+Without `--execute` it previews only. Physical execution additionally
+requires `--qualification-run`, a unique `--batch-id`,
+`--expected-serial`, and two `--confirm-specimen` arguments in
+channel 1/channel 2 order.
+Use two individually reviewed profiles on one instrument. Placeholder
+specimen IDs and zero discharge cutoff are refused. Currents and limits
+come from the YAML; source/rating and termination validation remain.
+The plan remains a non-executing configuration snapshot. The separate
+qualification command authorizes the experimental hardware path.
+No automatic resume/retry is provided.
+Each batch creates `dual_experiment.json`, channel-specific phase
+recordings, and DUAL_COMPLETE only after successful cleanup and evidence
+validation. Use `smu dual-check BATCH_DIRECTORY`, not the single-channel
+experiment checker, for the batch root.
+Simulation remains isolated: `run_simulation` refuses real backends.
+Normal transitions stop only their channel; faults attempt stop-both
+and failure recording before session closure.
+This is experimental supervised bench software. VISA/file operations
+can block and delay peer servicing. Software deadlines cannot interrupt
+a stalled call. Passing tests/evidence checks do not establish physical
+isolation, device-rating correctness, calibration, or a hard response
+bound. Independent protection and operating-envelope review remain
+required. Keep the development branch until bench qualification.
+## Independent trigger-group startup
+Dual-session startup explicitly releases channel grouping with
+`:SYST:GRO:DEF (@1),(@2)` while both outputs report OFF, and verifies
+`:SYST:GRO:DEF?` reports independent groups before channel setup.
+The probe and batch manifest retain the before/after readbacks.
+A grouped readback is a startup failure, not an error to ignore.

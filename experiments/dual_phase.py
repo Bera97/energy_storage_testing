@@ -96,11 +96,19 @@ class DualPhase:
             raise RuntimeError("Host clock moved backwards.")
         self.last_clock = value
         return value
+
     def _checked(self, operation, *args):
         self.session._require_connected()
-        result = operation(*args)
-        self.session.smu.check_errors()
-        return result
+        try:
+            result = operation(*args)
+            self.session.smu.check_errors()
+            return result
+        except Exception as error:
+            label = getattr(operation, "__name__", "operation")
+            error.add_note(
+                f"Dual CH{self.channel}: {label}, arguments={args!r}"
+            )
+            raise
     def _same(self, actual, expected, label):
         if (
             isinstance(actual, bool)

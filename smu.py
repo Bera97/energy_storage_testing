@@ -10,6 +10,8 @@ import sys
 
 ROUTES = {
     "plan": "experiments.run_live",
+    "dual-run": "experiments.dual_live",
+    "dual-check": "experiments.dual_live",
     "dual-probe": "experiments.dual_instrument_io",
     "dual-plan": "experiments.dual_preconditioning",
     "dual-simulate": "experiments.dual_coordinator",
@@ -408,6 +410,9 @@ def main(argv=None):
         arguments[:1]
     ).command
     forwarded = arguments[1:]
+
+    if command in ("dual-run", "dual-check"):
+        return import_module("experiments.dual_live").main([command, *forwarded])
 
     if command == "analyze":
         return _analyze_main(forwarded)

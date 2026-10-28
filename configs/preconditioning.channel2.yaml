@@ -7,18 +7,18 @@ experiment:
   cycles: 2
 dut:
   name: Hanna's EDLC
-  specimen_id: 1_CH2_REVIEW
+  specimen_id: '2'
   category: edlc
   chemistry: EDLC
-  manufacturer: Eaton
+  manufacturer: Kemet
   model: something
-  nominal_capacity_ah: 0.000336
-  nominal_capacitance_f: 0.22
+  nominal_capacity_ah: 0.000718
+  nominal_capacitance_f: 0.47
   ratings:
     minimum_voltage_v: 0.0
     maximum_voltage_v: 5.55
-    maximum_continuous_charge_current_a: 0.04
-    maximum_continuous_discharge_current_a: 0.04
+    maximum_continuous_charge_current_a: 0.1
+    maximum_continuous_discharge_current_a: 0.1
 instrument:
   visa_address: USB0::0x2A8D::0x9201::MY61391173::0::INSTR
   channel: 2
@@ -32,7 +32,7 @@ charge:
   current:
     current_a: null
     current_fraction: null
-    c_rate: 30
+    c_rate: 20
   target_voltage_v: 5.5
   cv_voltage_tolerance_v: 0.05
   termination:
@@ -43,13 +43,13 @@ charge:
   maximum_cv_duration_s: 1800
 rest:
   after_charge_s: 15
-  after_discharge_s: 60
+  after_discharge_s: 15
 discharge:
   mode: constant_current
   current:
     basis: rated_max_discharge_fraction
     factor: 0.1
-  cutoff_voltage_v: 0.025
+  cutoff_voltage_v: 0.02
   maximum_duration_s: 3600
 output:
   root_directory: runs

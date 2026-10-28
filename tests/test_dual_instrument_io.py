@@ -34,10 +34,13 @@ class FakeSMU:
         self.commands = []
         self.shutdown_calls = 0
         self.closed = False
+        self.grouped = False
     def connect(self):
         self.is_connected = True
     def _write(self, command):
         self.commands.append(command)
+        if command == ":SYST:GRO:DEF (@1),(@2)":
+            self.grouped = False
     def check_errors(self):
         pass
     def shutdown(self):
@@ -50,6 +53,10 @@ class FakeSMU:
         self.is_connected = False
 
     def _query(self, command):
+        if command == "*OPC?":
+            return "1"
+        if command == ":SYST:GRO:DEF?":
+            return "(@1,2)" if self.grouped else "(@1),(@2)"
         if command == ":SYST:TIME:TIM:COUN:RES:AUTO?":
             return "0"
         raise AssertionError(f"Unexpected query: {command}")
@@ -197,3 +204,52 @@ def test_connect_requires_explicit_serial(capsys):
             "--connect",
         ])
     assert caught.value.code == 2
+
+def test_shared_setup_releases_persistent_grouping(
+    connected, monkeypatch
+):
+    session, driver = connected
+    driver.grouped = True
+    monkeypatch.setattr(io, "SpotAcquisition", FakeSpot)
+    session.shutdown_all()
+    session.configure_shared()
+    assert driver.grouped is False
+    assert session.trigger_group_evidence == {
+        "before": "(@1,2)",
+        "after": "(@1),(@2)",
+        "independent": True,
+    }
+    assert driver.commands.index(":SYST:GRO:DEF (@1),(@2)") < (
+        driver.commands.index(":FORM:SREG ASC")
+    )
+def test_grouped_readback_prevents_shared_configuration(
+    connected, monkeypatch
+):
+    session, driver = connected
+    original = driver._query
+    def still_grouped(command):
+        if command == ":SYST:GRO:DEF?":
+            return "(@1,2)"
+        return original(command)
+    monkeypatch.setattr(driver, "_query", still_grouped)
+    monkeypatch.setattr(io, "SpotAcquisition", FakeSpot)
+    session.shutdown_all()
+    with pytest.raises(RuntimeError, match="independent"):
+        session.configure_shared()
+    assert ":FORM:SREG ASC" not in driver.commands
+
+def test_group_setup_requires_operation_completion(
+    connected, monkeypatch
+):
+    session, driver = connected
+    original = driver._query
+    def incomplete(command):
+        if command == "*OPC?":
+            return "0"
+        return original(command)
+    monkeypatch.setattr(driver, "_query", incomplete)
+    monkeypatch.setattr(io, "SpotAcquisition", FakeSpot)
+    session.shutdown_all()
+    with pytest.raises(RuntimeError, match="completion"):
+        session.configure_shared()
+    assert ":FORM:SREG ASC" not in driver.commands
