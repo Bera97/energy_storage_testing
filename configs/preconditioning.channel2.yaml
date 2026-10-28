@@ -1,0 +1,55 @@
+# Planning example copied from the existing profile.
+# Review actual specimen identity and all limits before any live use.
+schema_version: 1
+experiment:
+  type: preconditioning
+  name: cell_preconditioning
+  cycles: 2
+dut:
+  name: Hanna's EDLC
+  specimen_id: 1_CH2_REVIEW
+  category: edlc
+  chemistry: EDLC
+  manufacturer: Eaton
+  model: something
+  nominal_capacity_ah: 0.000336
+  nominal_capacitance_f: 0.22
+  ratings:
+    minimum_voltage_v: 0.0
+    maximum_voltage_v: 5.55
+    maximum_continuous_charge_current_a: 0.04
+    maximum_continuous_discharge_current_a: 0.04
+instrument:
+  visa_address: USB0::0x2A8D::0x9201::MY61391173::0::INSTR
+  channel: 2
+  four_wire: false
+  nplc: 1.0
+acquisition:
+  interval_s: 0.2
+  maximum_sample_gap_s: 0.5
+charge:
+  mode: cc_cv
+  current:
+    current_a: null
+    current_fraction: null
+    c_rate: 30
+  target_voltage_v: 5.5
+  cv_voltage_tolerance_v: 0.05
+  termination:
+    current_reference: configured_charge_current
+    current_factor: 0.05
+    hold_time_s: 5
+  maximum_duration_s: 3600
+  maximum_cv_duration_s: 1800
+rest:
+  after_charge_s: 15
+  after_discharge_s: 60
+discharge:
+  mode: constant_current
+  current:
+    basis: rated_max_discharge_fraction
+    factor: 0.1
+  cutoff_voltage_v: 0.025
+  maximum_duration_s: 3600
+output:
+  root_directory: runs

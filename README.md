@@ -267,3 +267,17 @@ Prepared-phase recording coordination now lives alongside
 `ExperimentPhaseRun` in `recording/experiment_phase_run.py`.
 Existing polling endpoints, phase-specific exception-report attributes,
 recording finalization, and original-error preservation remain unchanged.
+## Dual-channel development: planning only
+Preview two independent preconditioning profiles:
+```powershell
+python -m smu dual-plan --config configs/preconditioning.channel1.yaml --config configs/preconditioning.channel2.yaml
+```
+The profiles must select channels 1 and 2, use the same exact VISA
+resource address, and have different specimen IDs.
+Each profile retains its own device category and test settings.
+The generated profiles are planning examples, not approved physical
+test configurations. The channel-2 example copies the first profile's
+ratings and requires review for the actual second specimen.
+This command cannot connect, enable output, or execute experiments.
+A shared-session concurrent execution backend is not implemented yet.
+Do not launch two single-channel runners against the same instrument.
