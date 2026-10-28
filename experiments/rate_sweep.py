@@ -147,14 +147,14 @@ def build_sweep(settings, profile):
         "kind": kind,
         "will_connect": False,
         "will_enable_output": False,
-        "hardware_execution_available": False,
+        "hardware_execution_available": True,
         "instrument_operating_envelope_verified": False,
         "settings": deepcopy(settings),
         "points": points,
         "total_cycles": len(points) * repetitions,
         "total_phases": len(points) * repetitions * 4,
         "warnings": [
-            "Planning only: no sweep executor is implemented.",
+            "Planning snapshot only; use sweep-run for explicit execution.",
             "Existing finite per-phase buffer limits remain; "
             "there is no buffer rollover.",
             "Current screening does not qualify the full instrument "
@@ -176,7 +176,10 @@ def load_sweep(path):
         raise ValueError(
             f"Cannot read sweep configuration: {error}"
         ) from error
-    _mapping(document, "document", ("profile", "sweep"))
+    _mapping(
+        document, "document", ("profile", "sweep"),
+        optional=("preparation",),
+    )
     reference = document["profile"]
     if not isinstance(reference, str) or not reference.strip():
         raise ValueError("profile must be a nonempty path.")
@@ -186,6 +189,7 @@ def load_sweep(path):
     profile = load_config(profile_path)["config"]
     result = build_sweep(document["sweep"], profile)
     result["profile_path"] = str(profile_path.resolve())
+    result["preparation"] = deepcopy(document.get("preparation"))
     return result
 def main(argv=None):
     parser = argparse.ArgumentParser(
@@ -213,7 +217,7 @@ def main(argv=None):
             f"{plan['total_phases']} phases"
         )
         print(
-            "PREVIEW ONLY: no connection, no output, no sweep executor."
+            "PREVIEW ONLY: no connection or output."
         )
         print(
             "Point Value       Charge(mA) Discharge(mA) "

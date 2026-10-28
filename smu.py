@@ -9,6 +9,8 @@ import sys
 
 
 ROUTES = {
+    "sweep-run": "experiments.sweep_live",
+    "sweep-check": "experiments.sweep_live",
     "sweep-plan": "experiments.rate_sweep",
     "plan": "experiments.run_live",
     "dual-run": "experiments.dual_live",
@@ -411,6 +413,11 @@ def main(argv=None):
         arguments[:1]
     ).command
     forwarded = arguments[1:]
+
+    if command in ("sweep-run", "sweep-check"):
+        return import_module("experiments.sweep_live").main(
+            [command, *forwarded]
+        )
 
     if command in ("dual-run", "dual-check"):
         return import_module("experiments.dual_live").main([command, *forwarded])

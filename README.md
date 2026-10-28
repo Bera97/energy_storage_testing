@@ -165,7 +165,7 @@ Optional transport/planning overrides remain available through command-specific 
 | `tests/` | Offline automated tests |
 
 ## Charging/discharging rate-sweep planning
-This increment is offline planning only; there is no live sweep executor.
+The planner is hardware-free. Single-channel execution uses `sweep-run` with explicit `--execute`.
 ```powershell
 python -m smu sweep-plan --config configs/charging.sweep.yaml
 python -m smu sweep-plan --config configs/discharging.sweep.yaml
@@ -180,5 +180,40 @@ Reference charge current, termination criteria, specimen ratings, and
 timeouts require review; the examples are not approved test protocols.
 Every point uses the existing finite per-phase acquisition budget.
 Oversized phases and invalid currents are rejected, not clamped or skipped.
-There is no buffer rollover, automatic sample-rate reduction, or
-first-cycle state preparation in this planning increment.
+Finite per-phase buffers remain; there is no buffer rollover or
+automatic sample-rate reduction. Live starting-state preparation
+is configured explicitly.
+
+## Single-channel sweep execution
+`sweep-run` previews by default; only `--execute` authorizes hardware.
+All points and the preparation cycle are validated before connection.
+Use this runner with one specimen and no competing instrument controller.
+Each sweep begins with one separately recorded reference preparation
+cycle: charge, rest, discharge, rest. It is excluded from measured points.
+Set its `charge_current` and `discharge_fraction` explicitly under the
+top-level `preparation` mapping in the sweep YAML. The example 2C reference
+is editable and is not claimed to be manufacturer-approved or optimal.
+Each measured point then runs its configured repetitions using the
+existing single-channel executor. Shutdown and session closure finish
+between jobs. Faults or interruption stop the sequence; there is no
+automatic retry or resume.
+```powershell
+python -m smu sweep-run --config configs/charging.sweep.yaml
+python -m smu sweep-run --config configs/charging.sweep.yaml --sweep-id YOUR_UNIQUE_NAME --execute
+python -m smu sweep-check runs/YOUR_UNIQUE_NAME
+```
+The actual recording root comes from the specimen YAML. Keep the reported
+`sweep_directory`. A sweep uses `sweep.json`, a `preparation` child,
+`point_0001` etc. children, and `SWEEP_COMPLETE` only after final validation.
+Child experiment metadata retain sweep kind, point identity, rate basis,
+rate value, repetition count, and preparation/measurement role. A cycle
+number within a child identifies its repetition.
+`sweep-check` revalidates the stored plans, point labels, child recordings,
+channel identity, instrument serial, and session cleanup evidence.
+Recording counts include the preparation recordings; measured-result
+aggregation must exclude them. Whole-sweep analysis is not implemented yet.
+The finite per-phase buffer limits are unchanged. There is no buffer
+rollover, automatic reduction in sampling rate, or day-long endurance
+qualification. Evidence checks do not establish calibration, physical
+isolation, or suitability of the specimen ratings. Source paths can be
+absolute; copied evidence is not automatically relocatable.

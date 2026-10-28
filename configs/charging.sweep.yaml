@@ -1,5 +1,10 @@
 # Planning example only; review the referenced specimen profile.
 profile: preconditioning.channel1.yaml
+preparation:
+  charge_current:
+    c_rate: 2
+  discharge_fraction: 0.5
+
 sweep:
   schema_version: 1
   kind: charging

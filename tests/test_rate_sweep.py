@@ -90,7 +90,7 @@ def test_charge_sweep_preserves_reference_and_inputs():
             for phase in phases if phase["type"] == "rest"
         )
     assert plan["will_connect"] is False
-    assert plan["hardware_execution_available"] is False
+    assert plan["hardware_execution_available"] is True
 def test_discharge_sweep_holds_charge_fixed():
     settings = {
         **deepcopy(SETTINGS),

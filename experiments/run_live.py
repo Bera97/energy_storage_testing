@@ -147,6 +147,7 @@ def execute_live(
     maximum_records=100000,
     timeout_ms=5000,
     visa_library=None,
+    context=None,
 ):
     """Return (runner_report, experiment_directory).
 
@@ -229,6 +230,7 @@ def execute_live(
             },
             "acquisition_planning_limit": maximum_records,
             "external_supply_control": "none",
+            "sweep_context": context,
         },
     )
 
