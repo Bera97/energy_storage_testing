@@ -169,6 +169,9 @@ class DualInstrumentSession:
                 raise RuntimeError(
                     f"Channel {channel} NPLC readback mismatch."
                 )
+
+        from acquisition.dual_trace import configure_shared_trace_clock
+        self.trace_clock_evidence = configure_shared_trace_clock(self)
     def shutdown_all(self):
         self._require_connected()
         self.smu.shutdown()
@@ -226,6 +229,8 @@ def main(argv=None):
             report["identity"] = session.identity
             report["initial_stop_verified"] = session.shutdown_all()
             session.configure_shared()
+
+            report["trace_clock"] = deepcopy(session.trace_clock_evidence)
             for channel in (1, 2):
                 session.stop_channel(channel)
             report["channel_stop_evidence"] = deepcopy(

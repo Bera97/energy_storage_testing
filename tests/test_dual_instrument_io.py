@@ -48,6 +48,11 @@ class FakeSMU:
     def close(self):
         self.closed = True
         self.is_connected = False
+
+    def _query(self, command):
+        if command == ":SYST:TIME:TIM:COUN:RES:AUTO?":
+            return "0"
+        raise AssertionError(f"Unexpected query: {command}")
 class FakeSpot:
     calls = []
     def __init__(self, smu, channel):

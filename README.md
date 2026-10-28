@@ -312,3 +312,18 @@ A stop readback does not establish electrical isolation.
 `session_close_returned` means the existing driver's close method
 returned; it is not independent proof that every resource closed.
 The simulated coordinator remains simulation-only.
+## Dual-channel trace acquisition development
+`acquisition/dual_trace.py` configures only the selected channel's
+finite timer/trace acquisition and reads at most one bounded batch
+per poll. It does not enable outputs or provide a live experiment CLI.
+Shared dual-session setup disables timer auto-reset while both outputs
+are OFF. It does not reset the global timer. Individual phases use
+their own recorded timestamp origins; host deadlines remain mandatory.
+Active batches go through a supplied monitor callback. Trailing batches
+after stopping use a separate saving callback so a completed monitor
+is not re-entered. Recording finalization belongs to the caller.
+Failures propagate to the owning coordinator, which must attempt
+stop-both cleanup. A batch-size bound cannot interrupt a blocked VISA
+operation and does not establish joint-channel timing qualification.
+The simulated coordinator remains simulation-only. No energized dual
+cell experiment is authorized by this increment.
