@@ -46,11 +46,12 @@ charge:
   mode: cc_cv
 
   current:
-    # Battery: capacity_c_rate with factor 0.5
-    # EDLC: rated_max_charge_fraction with factor 0.10
-    # LIC: rated_max_charge_fraction with factor 0.50
-    basis: capacity_c_rate
-    factor: 0.5
+    # Set exactly ONE value; leave the others null.
+    # current_a: amperes; current_fraction: fraction of rating.
+    # c_rate: all device categories; requires nominal_capacity_ah.
+    current_a: null
+    current_fraction: null
+    c_rate: 0.5
 
   target_voltage_v: null
 

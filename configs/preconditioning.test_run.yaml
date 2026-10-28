@@ -5,7 +5,7 @@ experiment:
   name: cell_preconditioning
 
   # Total complete charge/rest/discharge/rest sequences.
-  cycles: 1
+  cycles: 2
 
 dut:
   name: Hanna's EDLC
@@ -26,8 +26,8 @@ dut:
   ratings:
     minimum_voltage_v: 0.0
     maximum_voltage_v: 5.55
-    maximum_continuous_charge_current_a: 0.01
-    maximum_continuous_discharge_current_a: 0.01
+    maximum_continuous_charge_current_a: 0.04
+    maximum_continuous_discharge_current_a: 0.04
 
 instrument:
   visa_address: "USB0::0x2A8D::0x9201::MY61391173::0::INSTR"
@@ -46,11 +46,12 @@ charge:
   mode: cc_cv
 
   current:
-    # Battery: capacity_c_rate with factor 0.5
-    # EDLC: rated_max_charge_fraction with factor 0.10
-    # LIC: rated_max_charge_fraction with factor 0.50
-    basis: rated_max_charge_fraction
-    factor: 0.5
+    # Set exactly ONE value; leave the others null.
+    # current_a: amperes; current_fraction: fraction of rating.
+    # c_rate: all device categories; requires nominal_capacity_ah.
+    current_a: null
+    current_fraction: null
+    c_rate: 30
 
   target_voltage_v: 5.5
 
@@ -60,25 +61,25 @@ charge:
 
   termination:
     # Alternative: configured_charge_current
-    current_reference: rated_max_charge_current
+    current_reference: configured_charge_current
     current_factor: 0.05
-    hold_time_s: 10
+    hold_time_s: 5
 
   maximum_duration_s: 3600
   maximum_cv_duration_s: 1800
 
 rest:
-  after_charge_s: 30
-  after_discharge_s: 30
+  after_charge_s: 15
+  after_discharge_s: 60
 
 discharge:
   mode: constant_current
 
   current:
     basis: rated_max_discharge_fraction
-    factor: 0.25
+    factor: 0.1
 
-  cutoff_voltage_v: 0.05
+  cutoff_voltage_v: 0.025
   maximum_duration_s: 3600
 
 output:

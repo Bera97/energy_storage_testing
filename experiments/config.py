@@ -7,7 +7,10 @@ from pathlib import Path
 
 import yaml
 
-from experiments.current_settings import resolve_currents
+from experiments.current_settings import (
+    parse_charge_current,
+    resolve_currents,
+)
 
 
 class _UniqueSafeLoader(yaml.SafeLoader):
@@ -301,10 +304,13 @@ def validate_config(document):
     if charge["mode"] != "cc_cv":
         raise ValueError("charge.mode must be cc_cv.")
 
-    charge_current = _mapping(
+    charge_basis, charge_factor = parse_charge_current(
         charge["current"],
-        "charge.current",
-        required=("basis", "factor"),
+        category=dut["category"],
+        nominal_capacity_ah=dut.get("nominal_capacity_ah"),
+        maximum_charge_current_a=ratings[
+            "maximum_continuous_charge_current_a"
+        ],
     )
 
     target_voltage = _number(
@@ -448,8 +454,8 @@ def validate_config(document):
         maximum_discharge_current_a=ratings[
             "maximum_continuous_discharge_current_a"
         ],
-        charge_basis=charge_current["basis"],
-        charge_factor=charge_current["factor"],
+        charge_basis=charge_basis,
+        charge_factor=charge_factor,
         discharge_factor=discharge_current["factor"],
         termination_reference=termination[
             "current_reference"

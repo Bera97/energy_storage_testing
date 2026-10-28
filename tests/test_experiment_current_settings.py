@@ -82,26 +82,23 @@ class ExperimentCurrentSettingsTests(unittest.TestCase):
         ):
             self.resolve(nominal_capacity_ah=None)
 
-    def test_category_and_basis_must_match(self):
-        cases = [
-            {
-                "category": "battery",
-                "charge_basis": "rated_max_charge_fraction",
-            },
-            {
-                "category": "edlc",
-                "charge_basis": "capacity_c_rate",
-            },
-            {
-                "category": "lic",
-                "charge_basis": "capacity_c_rate",
-            },
-        ]
 
-        for changes in cases:
-            with self.subTest(changes=changes):
-                with self.assertRaises(ValueError):
-                    self.resolve(**changes)
+    def test_all_categories_support_c_rate_and_fraction(self):
+        for category in ("battery", "edlc", "lic"):
+            for basis in (
+                "capacity_c_rate",
+                "rated_max_charge_fraction",
+            ):
+                with self.subTest(category=category, basis=basis):
+                    result = self.resolve(
+                        category=category,
+                        charge_basis=basis,
+                    )
+                    self.assertAlmostEqual(
+                        result.charge_current_a, 1.0
+                    )
+        with self.assertRaises(ValueError):
+            self.resolve(charge_basis="unknown")
 
     def test_unknown_category_is_rejected(self):
         with self.assertRaises(ValueError):

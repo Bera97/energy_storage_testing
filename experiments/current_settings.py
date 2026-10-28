@@ -74,10 +74,9 @@ def resolve_currents(
 ):
     """Resolve charge, discharge, and termination current magnitudes.
 
-    Battery charge basis:
-        capacity_c_rate
-
-    EDLC and LIC charge basis:
+    All supported device categories may select:
+        absolute_current
+        capacity_c_rate, using explicit nominal_capacity_ah
         rated_max_charge_fraction
 
     Discharge:
@@ -104,12 +103,12 @@ def resolve_currents(
         "maximum_discharge_current_a",
     )
 
-    if category == "battery":
-        if charge_basis != "capacity_c_rate":
-            raise ValueError(
-                "Battery charging requires "
-                "charge_basis=capacity_c_rate."
-            )
+    if charge_basis == "absolute_current":
+        charge_current = _positive_number(
+            charge_factor, "charge_factor"
+        )
+
+    elif charge_basis == "capacity_c_rate":
 
         capacity = _positive_number(
             nominal_capacity_ah,
@@ -128,7 +127,7 @@ def resolve_currents(
     else:
         if charge_basis != "rated_max_charge_fraction":
             raise ValueError(
-                "EDLC and LIC charging require "
+                "Fraction charging requires "
                 "charge_basis=rated_max_charge_fraction."
             )
 
@@ -189,3 +188,61 @@ def resolve_currents(
         discharge_current_a=discharge_current,
         charge_termination_current_a=termination_current,
     )
+
+def parse_charge_current(
+    selection,
+    *,
+    category,
+    nominal_capacity_ah,
+    maximum_charge_current_a,
+):
+    """Translate one explicit selection or a legacy basis/factor pair."""
+    if not isinstance(selection, dict):
+        raise ValueError("charge.current must be a mapping.")
+    if not all(isinstance(key, str) for key in selection):
+        raise ValueError("charge.current keys must be strings.")
+    legacy = {"basis", "factor"}
+    if legacy.intersection(selection):
+        if set(selection) != legacy:
+            raise ValueError(
+                "Do not mix legacy basis/factor with current selections."
+            )
+        return selection["basis"], selection["factor"]
+    allowed = {"current_a", "current_fraction", "c_rate"}
+    unknown = set(selection) - allowed
+    if unknown:
+        raise ValueError(
+            "charge.current unknown fields: "
+            + ", ".join(sorted(unknown))
+        )
+    chosen = [
+        key for key in allowed
+        if selection.get(key) is not None
+    ]
+    if len(chosen) != 1:
+        raise ValueError(
+            "Set exactly one of current_a, current_fraction, or c_rate."
+        )
+    method = chosen[0]
+    value = selection[method]
+    if method == "current_a":
+        current = _positive_number(value, "charge.current.current_a")
+    elif method == "current_fraction":
+        maximum = _positive_number(
+            maximum_charge_current_a, "maximum_charge_current_a"
+        )
+        fraction = _fraction(
+            value, "charge.current.current_fraction"
+        )
+        current = _positive_product(
+            maximum, fraction, "resolved charge current"
+        )
+    else:
+        capacity = _positive_number(
+            nominal_capacity_ah, "nominal_capacity_ah"
+        )
+        rate = _positive_number(value, "charge.current.c_rate")
+        current = _positive_product(
+            capacity, rate, "resolved charge current"
+        )
+    return "absolute_current", current

@@ -77,7 +77,7 @@ Review all sections before use:
 | `discharge` | Current basis/factor, cutoff voltage, timeout |
 | `output` | Recording root directory |
 
-The current schema uses current `basis` and `factor`, not an arbitrary `current_A` key. Inspect the resolved currents in the plan.
+Under `charge.current`, set exactly one of `current_a`, `current_fraction`, or `c_rate`; omit the others or set them to null. Absolute current is in amperes; fraction multiplies the supplied maximum charge-current rating. C-rate is available for battery, edlc, and lic and requires an explicit nominal_capacity_ah. Legacy basis/factor input remains supported but must not be mixed with the new fields. Discharge selection is unchanged. All selections remain subject to the current rating and termination-current checks. Inspect resolved currents in the plan.
 Unknown fields and duplicate YAML keys are rejected.
 
 Live-required monitoring includes `charge.cv_voltage_tolerance_v` and `acquisition.maximum_sample_gap_s`. The gap must be at least the sample interval and less than the termination hold time.
