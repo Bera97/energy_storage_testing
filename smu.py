@@ -11,6 +11,7 @@ import sys
 ROUTES = {
     "plan": "experiments.run_live",
     "dual-plan": "experiments.dual_preconditioning",
+    "dual-simulate": "experiments.dual_coordinator",
     "run": "experiments.run_live",
     "check": "analysis.check_preconditioning_experiment",
     "analyze-phase": "analysis.export_recorded_analysis",

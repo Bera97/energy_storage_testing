@@ -281,3 +281,17 @@ ratings and requires review for the actual second specimen.
 This command cannot connect, enable output, or execute experiments.
 A shared-session concurrent execution backend is not implemented yet.
 Do not launch two single-channel runners against the same instrument.
+## Dual-channel coordinator simulation
+The coordinator can be exercised without hardware:
+```powershell
+python -m smu dual-simulate --config configs/preconditioning.channel1.yaml --config configs/preconditioning.channel2.yaml
+```
+It uses virtual time and synthetic phase endpoints. It tests independent
+progression, rest scheduling, endpoint acceptance, deadlines, finalization
+failure, and shared cleanup. It does not simulate electrochemistry,
+instrument timing, physical shutdown, measurement accuracy, or CSV durability.
+A deliberate fault can be injected using `--fail-channel 1` or
+`--fail-channel 2`; that command is expected to return a nonzero exit code.
+All reports explicitly identify their evidence as simulated.
+The CLI does not provide a real dual-channel execution backend.
+Do not run two single-channel controllers against the same instrument.
