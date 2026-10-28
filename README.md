@@ -327,3 +327,19 @@ stop-both cleanup. A batch-size bound cannot interrupt a blocked VISA
 operation and does not establish joint-channel timing qualification.
 The simulated coordinator remains simulation-only. No energized dual
 cell experiment is authorized by this increment.
+## Dual-channel phase adapter development
+`experiments/dual_phase.py` composes channel-local source configuration,
+trace acquisition, existing measurement monitors, and phase recording.
+Normal completion stops only the selected channel, drains final trace
+records without re-entering a completed monitor, and qualifies the
+recording through ExperimentPhaseRun.
+Runtime faults attempt global shutdown before exporting the failed
+phase. The owning coordinator must also finalize the interrupted peer
+and close the shared session.
+Output capability is refused by default. Explicit allow_output=True is
+a caller authorization, not proof of wiring or operating-envelope safety.
+The adapter is library-only: there is no public concurrent execution
+command. The simulation-only coordinator guard remains unchanged.
+Synchronous configuration and file/VISA operations can delay servicing
+of another channel. Bounded trace batches do not establish a hard
+response-time guarantee; joint timing still requires qualification.
