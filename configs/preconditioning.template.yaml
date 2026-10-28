@@ -16,7 +16,6 @@ dut:
   chemistry: null
   manufacturer: null
   model: null
-  datasheet_reference: null
 
   # Required for battery charging based on C-rate.
   nominal_capacity_ah: null

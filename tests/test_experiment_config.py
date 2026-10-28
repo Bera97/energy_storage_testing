@@ -30,7 +30,6 @@ class ExperimentConfigTests(unittest.TestCase):
                 "chemistry": "synthetic",
                 "manufacturer": "test",
                 "model": "test",
-                "datasheet_reference": "synthetic fixture",
                 "nominal_capacity_ah": 2.0,
                 "nominal_capacitance_f": None,
                 "ratings": {

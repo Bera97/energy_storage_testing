@@ -16,7 +16,6 @@ dut:
   chemistry: EDLC
   manufacturer: Eaton
   model: something
-  datasheet_reference: noref
 
   # Required for battery charging based on C-rate.
   nominal_capacity_ah: 0.000336

@@ -172,7 +172,6 @@ def validate_config(document):
             "chemistry",
             "manufacturer",
             "model",
-            "datasheet_reference",
             "ratings",
         ),
         optional=(
@@ -187,7 +186,6 @@ def validate_config(document):
         "chemistry",
         "manufacturer",
         "model",
-        "datasheet_reference",
     ):
         _text(dut[field], f"dut.{field}")
 

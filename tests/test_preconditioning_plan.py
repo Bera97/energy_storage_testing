@@ -35,7 +35,6 @@ class PreconditioningPlanTests(unittest.TestCase):
                 "chemistry": "synthetic",
                 "manufacturer": "test",
                 "model": "test",
-                "datasheet_reference": "synthetic fixture",
                 "nominal_capacity_ah": 2.0,
                 "ratings": {
                     "minimum_voltage_v": 2.5,
