@@ -85,3 +85,6 @@ discharge:
 output:
   # The dry run does not create this directory.
   root_directory: runs
+  # Run folder becomes <timestamp>_<file_name> inside root_directory.
+  file_name: lic_test_run
+  analysis_directory: analysis_outputs

@@ -4,6 +4,36 @@ Supervised preconditioning experiments using a Keysight B2902B source-measure un
 Run `python -m smu` from the repository root.
 The procedure is charge, rest, discharge, rest, repeated for the configured cycle count.
 
+## One command
+
+All folder and file names come from the YAML profile, so one command covers the whole workflow.
+`output.root_directory` holds the recordings; `output.analysis_directory` holds the analysis exports; `output.file_name` names each run folder as `<timestamp>_<file_name>`.
+One `--config` runs one channel; two `--config` arguments run both channels of one instrument.
+
+```powershell
+# Preview: validate the plan, print it, no hardware (also the default without flags)
+python -m smu --config .\configs\preconditioning.channel1.yaml --preview
+
+# Execute: run the experiment on hardware
+python -m smu --config .\configs\preconditioning.channel1.yaml --execute
+
+# Execute and analyze: analyze the recorded run when it is over
+python -m smu --config .\configs\preconditioning.channel1.yaml --execute --analyze
+
+# Analyze an existing run: pass only the run folder name inside output.root_directory
+python -m smu --config .\configs\preconditioning.channel1.yaml --analyze 20261110_2230_channel1
+
+# Two channels on one instrument: pass both profiles
+python -m smu --config .\configs\preconditioning.channel1.yaml --config .\configs\preconditioning.channel2.yaml --execute --analyze
+```
+
+Run folders are `<timestamp>_<file_name>` inside `output.root_directory`, so repeated runs never overwrite each other.
+The analysis export for a run lands in `output.analysis_directory\<run folder name>` and is refused if it already exists.
+The analysis export directory is created automatically; you no longer need to create it first.
+`--execute` remains the explicit instruction to run hardware; `--preview` and `--analyze` never connect.
+If a run fails, analysis is skipped and the failure manifest is preserved.
+Legacy subcommands (`plan`, `run`, `dual-run`, `check`, `analyze`, `analyze-phase`, ...) remain available for compatibility.
+
 ## Safety and scope
 
 This is experimental supervised bench software, not an unattended charger or an independently qualified protection system.
@@ -41,6 +71,7 @@ These dependencies are not a pinned or independently qualified environment speci
 Set specimen identity, ratings, channel, VISA address, sensing, sampling, cycle count, currents, voltage targets, termination, rests, timeouts, and recording root in YAML.
 Repository profiles are specimen-specific examples, not universally safe templates.
 Unknown fields and duplicate YAML keys are rejected.
+The `output` section carries all folder names: `root_directory` for recordings, `analysis_directory` for analysis exports, and `file_name` for the `<timestamp>_<file_name>` run folder used by the one-command interface.
 
 For the short execution commands, add this top-level section to each profile and review all values for your setup:
 
@@ -110,8 +141,8 @@ The runner owns one shared instrument session. Normal transitions stop their own
 Startup requires outputs OFF, explicitly sets independent trigger groups with `:SYST:GRO:DEF (@1),(@2)`, waits for operation completion, and verifies the group readback before channel setup.
 
 Use `dual-check`, not the single-channel `check`, for a batch root.
-There is currently no public whole-batch dual-analysis command. Do not pass a dual batch root to `smu analyze`.
-Export individual active recordings using directories referenced by the batch manifest:
+The one-command interface analyzes whole dual batches automatically (`--execute --analyze` or `--analyze RUN_NAME` with both profiles); the export contains per-phase analysis, `summary.json`, `summary.csv`, and `ANALYSIS_COMPLETE`.
+The equivalent manual route exports individual active recordings using directories referenced by the batch manifest:
 
 ```powershell
 New-Item -ItemType Directory -Force .\analysis_outputs | Out-Null
@@ -157,6 +188,7 @@ Optional transport/planning overrides remain available through command-specific 
 | `smu.py` | Public CLI and single-channel whole-experiment analysis |
 | `configs/` | Specimen-specific profiles |
 | `experiments/` | Configuration, planning, monitoring coordination, execution |
+| `experiments/dual_analysis.py` | Whole-batch dual analysis export |
 | `drivers/` | Instrument/session/channel and SCPI helpers |
 | `acquisition/` | Acquisition and trace transports |
 | `recording/` | CSV, metadata, manifests, finalization |

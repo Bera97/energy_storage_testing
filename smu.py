@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+from datetime import datetime
 from importlib import import_module
 import json
 from pathlib import Path
@@ -375,6 +376,213 @@ def _analyze_main(argv):
     return 0
 
 
+def _unified_config_paths(documents, paths):
+    """Return validated (document, path) pairs for one or two profiles."""
+
+    if not 1 <= len(documents) <= 2:
+        raise SystemExit(
+            "Pass --config once for one channel or twice for "
+            "both channels of one instrument."
+        )
+
+    return list(zip(documents, paths))
+
+
+def _unified_run_name(document):
+    """Build the timestamped run-folder name from output.file_name."""
+
+    name = document["output"].get("file_name")
+
+    if name is None:
+        raise ValueError(
+            "Set output.file_name in the YAML profile; the run "
+            "folder becomes <timestamp>_<file_name> inside "
+            "output.root_directory."
+        )
+
+    if name.startswith("REPLACE_"):
+        raise ValueError(
+            "Replace output.file_name with a real name for your run."
+        )
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    return f"{stamp}_{name}"
+
+
+def _unified_analyze(document, run_name):
+    """Analyze one recorded run; folder names come from YAML only."""
+
+    output = document["output"]
+
+    if "analysis_directory" not in output:
+        raise ValueError(
+            "Set output.analysis_directory in the YAML profile "
+            "to use --analyze."
+        )
+
+    root = Path(output["root_directory"])
+    source = root / run_name
+
+    if not source.is_dir():
+        raise ValueError(
+            f"No recorded run named {run_name!r} inside "
+            f"{root.resolve()}."
+        )
+
+    destination = Path(output["analysis_directory"]) / run_name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    if (source / "dual_experiment.json").is_file():
+        return import_module(
+            "experiments.dual_analysis"
+        ).main([str(source), str(destination)])
+
+    if (source / "experiment.json").is_file():
+        return _analyze_main([str(source), str(destination)])
+
+    raise ValueError(
+        f"{source.resolve()} contains no experiment manifest; "
+        "pass the folder name of a recorded single run or dual "
+        "batch inside output.root_directory."
+    )
+
+
+def _unified_main(arguments):
+    parser = argparse.ArgumentParser(
+        prog="python -m smu",
+        description=(
+            "One-command experiment interface: preview, execute, "
+            "and analyze from one YAML profile. One --config runs "
+            "one channel; two --config arguments run both channels "
+            "of one instrument. Without mode flags, preview only."
+        ),
+        epilog=(
+            "--execute is the explicit instruction to run hardware. "
+            "--execute --analyze analyzes the run when it is over."
+        ),
+    )
+
+    parser.add_argument(
+        "--config",
+        action="append",
+        required=True,
+        help="YAML profile; pass twice for dual channel",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Validate and print the plan; no hardware (default)",
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Run the configured experiment on hardware",
+    )
+    parser.add_argument(
+        "--analyze",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="RUN_NAME",
+        help=(
+            "Analyze a recorded run. With --execute, analyze the "
+            "run just recorded; without --execute, RUN_NAME is the "
+            "folder inside output.root_directory"
+        ),
+    )
+
+    parsed = parser.parse_args(arguments)
+
+    if parsed.preview and parsed.execute:
+        parser.error("--preview and --execute are exclusive.")
+    if parsed.preview and parsed.analyze is not None:
+        parser.error("--preview cannot be combined with --analyze.")
+    if parsed.execute and parsed.analyze not in (None, ""):
+        parser.error(
+            "--execute --analyze does not take a run name; the "
+            "run just recorded is analyzed."
+        )
+    if parsed.analyze is not None and parsed.analyze == "" and not parsed.execute:
+        parser.error(
+            "--analyze without --execute requires the run folder "
+            "name inside output.root_directory."
+        )
+
+    config_loader = import_module("experiments.config")
+    documents = []
+    paths = []
+
+    for path in parsed.config:
+        documents.append(config_loader.load_config(path)["config"])
+        paths.append(path)
+
+    try:
+        _unified_config_paths(documents, paths)
+        run_name = None
+
+        if parsed.execute:
+            run_name = _unified_run_name(documents[0])
+            forwarded = ["--execute", "--experiment-id", run_name]
+
+            if len(documents) == 2:
+                forwarded = [
+                    "dual-run",
+                    "--config", paths[0],
+                    "--config", paths[1],
+                    "--execute",
+                    "--batch-id", run_name,
+                ]
+
+                status = import_module(
+                    "experiments.dual_live"
+                ).main(forwarded)
+            else:
+                forwarded = [
+                    "--config", paths[0],
+                    "--execute",
+                    "--experiment-id", run_name,
+                ]
+
+                status = import_module(
+                    "experiments.run_live"
+                ).main(forwarded)
+
+            if status != 0:
+                if parsed.analyze is not None:
+                    print(
+                        "Run did not complete; analysis skipped.",
+                        file=sys.stderr,
+                    )
+
+                return status
+
+            if parsed.analyze is None:
+                return 0
+        elif parsed.analyze is not None:
+            run_name = parsed.analyze
+        else:
+            parsed.preview = True
+
+        if parsed.preview:
+            if len(documents) == 2:
+                return import_module(
+                    "experiments.dual_preconditioning"
+                ).main([
+                    "--config", paths[0],
+                    "--config", paths[1],
+                ])
+
+            return import_module(
+                "experiments.run_live"
+            ).main(["--config", paths[0], "--dry-run"])
+
+        return _unified_analyze(documents[0], run_name)
+    except ValueError as error:
+        print(f"Command failed: {error}", file=sys.stderr)
+        return 1
+
+
 def main(argv=None):
     arguments = list(
         sys.argv[1:] if argv is None else argv
@@ -387,9 +595,11 @@ def main(argv=None):
             "energy-storage experiments."
         ),
         epilog=(
-            "Use COMMAND --help for options. "
-            "run still requires --execute "
-            "for hardware execution."
+            "Without a command word, the flag interface applies: "
+            "--config PROFILE [--preview | --execute [--analyze] | "
+            "--analyze RUN_NAME]. Legacy subcommands remain "
+            "available; run still requires --execute for hardware "
+            "execution."
         ),
     )
 
@@ -406,26 +616,29 @@ def main(argv=None):
         parser.print_help()
         return 0
 
-    command = parser.parse_args(
-        arguments[:1]
-    ).command
-    forwarded = arguments[1:]
+    if not arguments[0].startswith("-"):
+        command = parser.parse_args(
+            arguments[:1]
+        ).command
+        forwarded = arguments[1:]
 
-    if command in ("dual-run", "dual-check"):
-        return import_module("experiments.dual_live").main([command, *forwarded])
+        if command in ("dual-run", "dual-check"):
+            return import_module("experiments.dual_live").main([command, *forwarded])
 
-    if command == "analyze":
-        return _analyze_main(forwarded)
+        if command == "analyze":
+            return _analyze_main(forwarded)
 
-    if command == "plan":
-        forwarded = [
-            "--dry-run",
-            *forwarded,
-        ]
+        if command == "plan":
+            forwarded = [
+                "--dry-run",
+                *forwarded,
+            ]
 
-    return import_module(
-        ROUTES[command]
-    ).main(forwarded)
+        return import_module(
+            ROUTES[command]
+        ).main(forwarded)
+
+    return _unified_main(arguments)
 
 
 if __name__ == "__main__":

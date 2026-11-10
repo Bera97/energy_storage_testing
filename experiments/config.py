@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import asdict
 import math
 from pathlib import Path
+import re
 
 import yaml
 
@@ -448,8 +449,24 @@ def validate_config(document):
         config["output"],
         "output",
         required=("root_directory",),
+        optional=("file_name", "analysis_directory"),
     )
     _text(output["root_directory"], "output.root_directory")
+
+    if "file_name" in output:
+        name = _text(output["file_name"], "output.file_name")
+
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,50}", name) is None:
+            raise ValueError(
+                "output.file_name must contain 1-50 ASCII letters, "
+                "digits, underscores, or hyphens."
+            )
+
+    if "analysis_directory" in output:
+        _text(
+            output["analysis_directory"],
+            "output.analysis_directory",
+        )
 
     currents = resolve_currents(
         category=dut["category"],

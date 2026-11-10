@@ -53,6 +53,9 @@ discharge:
   maximum_duration_s: 3600
 output:
   root_directory: runs
+  # Run folder becomes <timestamp>_<file_name> inside root_directory.
+  file_name: channel1
+  analysis_directory: analysis_outputs
 
 # Reviewed execution settings; --execute is still required on the CLI.
 execution:
