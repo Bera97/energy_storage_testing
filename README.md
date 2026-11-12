@@ -186,7 +186,7 @@ independent proof that every underlying resource closed.
 | `experiments/charge_setup.py` | Outputs-off charge source configuration and preparation |
 | `experiments/discharge_setup.py` | Outputs-off discharge source configuration and preparation |
 | `experiments/trace_timing.py` | First-sample timing and host-deadline adapters |
-| `experiments/dual_analysis.py` | Whole-batch dual analysis export |
+| `analysis/dual_experiment.py` | Whole-batch dual analysis export |
 | `drivers/` | Instrument/session/channel and SCPI helpers |
 | `acquisition/` | Acquisition and trace transports |
 | `recording/` | CSV, metadata, manifests, finalization |

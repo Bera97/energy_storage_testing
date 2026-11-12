@@ -136,7 +136,7 @@ def _unified_analyze(document, run_name):
 
     if (source / "dual_experiment.json").is_file():
         return import_module(
-            "experiments.dual_analysis"
+            "analysis.dual_experiment"
         ).analyze_run(str(source), str(destination))
 
     if (source / "experiment.json").is_file():
