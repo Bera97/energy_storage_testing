@@ -18,7 +18,7 @@ import sys
 
 from analysis.validate_preconditioning_experiment import _read_json
 from experiments.dual_live import check_batch
-from smu import CSV_FIELDS, METRICS
+from analysis.export_experiment import CSV_FIELDS, METRICS
 
 
 DUAL_CSV_FIELDS = ("channel", *CSV_FIELDS)
