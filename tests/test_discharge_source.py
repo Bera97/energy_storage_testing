@@ -9,7 +9,7 @@ from test_charge_source import (
     FakeSMU as ChargeFakeSMU,
 )
 
-from experiments.discharge_source import (
+from experiments.discharge_setup import (
     DischargeConfigurationError,
     configure_discharge_source,
 )

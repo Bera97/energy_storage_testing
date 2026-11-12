@@ -8,7 +8,7 @@ from unittest.mock import patch
 import test_preconditioning_plan as plan_tests
 from test_charge_source import FakeSMU as SourceFakeSMU
 
-from experiments.prepare_charge import prepare_charge
+from experiments.charge_setup import prepare_charge
 
 
 class FakeSMU(SourceFakeSMU):
@@ -75,7 +75,7 @@ class PrepareChargeTests(unittest.TestCase):
         self.writer = FakeWriter()
 
         patcher = patch(
-            "experiments.prepare_charge.configure_trace_timebase",
+            "experiments.charge_setup.configure_trace_timebase",
             return_value={
                 "trace_timestamp_format": "ABS",
                 "timer_auto_reset": True,

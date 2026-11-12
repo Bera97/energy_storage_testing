@@ -32,8 +32,8 @@ from experiments.config import require_charge_monitoring_settings
 from experiments.discharge_trace_monitor import DischargeTraceMonitor
 from experiments.phase_activation import activate_phase_output
 from experiments.preconditioning import build_plan
-from experiments.prepare_charge import prepare_charge
-from experiments.prepare_discharge import prepare_discharge
+from experiments.charge_setup import prepare_charge
+from experiments.discharge_setup import prepare_discharge
 from recording.experiment_phase_run import ExperimentPhaseRun
 from recording.experiment_phase_run import (
     _record_failure_preserving_original,

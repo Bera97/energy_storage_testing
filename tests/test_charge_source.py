@@ -5,7 +5,7 @@ import unittest
 
 import test_preconditioning_plan as plan_tests
 
-from experiments.charge_source import (
+from experiments.charge_setup import (
     ChargeConfigurationError,
     configure_charge_source,
 )

@@ -8,7 +8,7 @@ import test_preconditioning_plan as plan_tests
 from test_discharge_source import FakeSMU as SourceFakeSMU
 from test_prepare_charge import FakeAcquisition, FakeWriter
 
-from experiments.prepare_discharge import prepare_discharge
+from experiments.discharge_setup import prepare_discharge
 
 
 class FakeSMU(SourceFakeSMU):
@@ -47,7 +47,7 @@ class PrepareDischargeTests(unittest.TestCase):
         self.writer = FakeWriter()
 
         patcher = patch(
-            "experiments.prepare_discharge.configure_trace_timebase",
+            "experiments.discharge_setup.configure_trace_timebase",
             return_value={
                 "trace_timestamp_format": "ABS",
                 "timer_auto_reset": True,
