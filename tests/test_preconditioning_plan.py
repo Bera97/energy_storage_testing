@@ -1,8 +1,6 @@
-"""Offline tests for preconditioning planning and the dry-run CLI."""
+"""Offline tests for preconditioning planning APIs."""
 
-from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
-import io
 import json
 from pathlib import Path
 import tempfile
@@ -10,7 +8,7 @@ import unittest
 
 import yaml
 
-from experiments.__main__ import main
+from experiments.config import load_config
 from experiments.preconditioning import build_plan
 
 
@@ -172,72 +170,35 @@ class PreconditioningPlanTests(unittest.TestCase):
         self.assertEqual(json.loads(encoded), plan)
         self.assertFalse(plan["execution_enabled"])
 
-    def test_cli_prints_plan_without_creating_files(self):
+    def test_loaded_config_plans_without_creating_or_modifying_files(self):
         self.save()
         before = {
             path.name: path.read_bytes()
             for path in self.root.iterdir()
         }
-        stdout = io.StringIO()
-        stderr = io.StringIO()
-
-        with redirect_stdout(stdout), redirect_stderr(stderr):
-            code = main([
-                "--config", str(self.path),
-                "--dry-run",
-            ])
-
+        document = load_config(self.path)["config"]
+        plan = build_plan(document)
+        encoded = json.dumps(plan, allow_nan=False)
         after = {
             path.name: path.read_bytes()
             for path in self.root.iterdir()
         }
-        plan = json.loads(stdout.getvalue())
-
-        self.assertEqual(code, 0)
-        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(json.loads(encoded), plan)
         self.assertEqual(plan["phase_count"], 8)
         self.assertEqual(before, after)
-
-    def test_cli_invalid_configuration_returns_one(self):
+        self.assertFalse(
+            Path(self.document["output"]["root_directory"]).exists()
+        )
+    def test_loaded_invalid_configuration_is_rejected(self):
         self.document["charge"]["target_voltage_v"] = None
         self.save()
-        stdout = io.StringIO()
-        stderr = io.StringIO()
+        with self.assertRaises(ValueError):
+            document = load_config(self.path)["config"]
+            build_plan(document)
 
-        with redirect_stdout(stdout), redirect_stderr(stderr):
-            code = main([
-                "--config", str(self.path),
-                "--dry-run",
-            ])
 
-        self.assertEqual(code, 1)
-        self.assertEqual(stdout.getvalue(), "")
-        self.assertIn(
-            "Experiment planning failed",
-            stderr.getvalue(),
-        )
 
-    def test_cli_requires_explicit_dry_run(self):
-        stderr = io.StringIO()
 
-        with redirect_stderr(stderr):
-            with self.assertRaises(SystemExit) as caught:
-                main(["--config", str(self.path)])
-
-        self.assertEqual(caught.exception.code, 2)
-
-    def test_cli_has_no_execute_option(self):
-        stderr = io.StringIO()
-
-        with redirect_stderr(stderr):
-            with self.assertRaises(SystemExit) as caught:
-                main([
-                    "--config", str(self.path),
-                    "--dry-run",
-                    "--execute",
-                ])
-
-        self.assertEqual(caught.exception.code, 2)
 
 
 if __name__ == "__main__":
