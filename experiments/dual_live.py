@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import sys
 import time
-from experiments.execution_settings import settings_for, require_ceilings, new_id
+from experiments.settings import settings_for, require_ceilings, new_id
 from uuid import uuid4
 from analysis.validate_preconditioning_experiment import _read_json
 from analysis.validate_recorded_run import validate_run

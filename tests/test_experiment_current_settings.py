@@ -3,7 +3,7 @@
 from dataclasses import FrozenInstanceError
 import unittest
 
-from experiments.current_settings import resolve_currents
+from experiments.settings import resolve_currents
 
 
 class ExperimentCurrentSettingsTests(unittest.TestCase):

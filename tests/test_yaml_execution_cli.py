@@ -7,7 +7,7 @@ import re
 import pytest
 import yaml
 from experiments.config import validate_config
-from experiments.execution_settings import (
+from experiments.settings import (
     new_id, require_ceilings, resolve_single, settings_for, validate_execution,
 )
 import experiments.dual_live as dual

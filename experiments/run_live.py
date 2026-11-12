@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import sys
 
-from experiments.execution_settings import resolve_single, require_ceilings
+from experiments.settings import resolve_single, require_ceilings
 
 from experiments.acquisition_budget import build_acquisition_plan
 from experiments.config import (

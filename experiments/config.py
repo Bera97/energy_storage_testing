@@ -8,9 +8,9 @@ import re
 
 import yaml
 
-from experiments.execution_settings import validate_execution
+from experiments.settings import validate_execution
 
-from experiments.current_settings import (
+from experiments.settings import (
     parse_charge_current,
     resolve_currents,
 )
