@@ -9,7 +9,7 @@ from experiments.phase_polling import (
     TracePoll,
     run_phase_polling,
 )
-from experiments.phase_safety_monitor import PhaseSafetyMonitor
+from experiments.trace_timing import PhaseSafetyMonitor
 
 
 class FakeClock:

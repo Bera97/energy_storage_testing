@@ -18,7 +18,7 @@ Only one controller/thread may use the instrument.
 
 import time
 
-from experiments.phase_safety_monitor import (
+from experiments.trace_timing import (
     PhaseSafetyMonitor,
 )
 
@@ -27,7 +27,7 @@ from experiments.phase_polling import (
     run_charge_polling,
 )
 from experiments.charge_trace_monitor import ChargeTraceMonitor
-from experiments.first_sample_trace_monitor import (
+from experiments.trace_timing import (
     create_trace_monitor,
     trace_timing_evidence,
 )

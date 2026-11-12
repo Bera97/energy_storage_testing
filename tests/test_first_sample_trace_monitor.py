@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from experiments.charge_trace_monitor import ChargeTraceMonitor
-from experiments.first_sample_trace_monitor import (
+from experiments.trace_timing import (
     FirstSampleTraceMonitor,
 )
 

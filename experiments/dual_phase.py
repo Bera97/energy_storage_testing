@@ -11,8 +11,8 @@ from acquisition.dual_trace import ChannelTraceAcquisition
 from experiments.charge_cv_classifier import VoltageSourceCVClassifier
 from experiments.charge_trace_monitor import ChargeTraceMonitor
 from experiments.discharge_trace_monitor import DischargeTraceMonitor
-from experiments.first_sample_trace_monitor import create_trace_monitor
-from experiments.phase_safety_monitor import PhaseSafetyMonitor
+from experiments.trace_timing import create_trace_monitor
+from experiments.trace_timing import PhaseSafetyMonitor
 from recording.experiment_phase_run import (
     ExperimentPhaseRun,
     _record_failure_preserving_original,

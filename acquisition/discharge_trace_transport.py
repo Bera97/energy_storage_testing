@@ -17,7 +17,7 @@ Measurements remain retained in memory.
 
 import time
 
-from experiments.phase_safety_monitor import (
+from experiments.trace_timing import (
     PhaseSafetyMonitor,
 )
 
@@ -28,7 +28,7 @@ from experiments.phase_polling import (
 from experiments.discharge_trace_monitor import (
     DischargeTraceMonitor,
 )
-from experiments.first_sample_trace_monitor import (
+from experiments.trace_timing import (
     create_trace_monitor,
     trace_timing_evidence,
 )
