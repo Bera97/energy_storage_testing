@@ -224,7 +224,7 @@ def _unified_main(arguments):
 
         if parsed.execute:
             run_name = _unified_run_name(documents[0])
-            forwarded = ["--execute", "--experiment-id", run_name]
+
 
             if len(documents) == 2:
                 forwarded = [
@@ -239,15 +239,12 @@ def _unified_main(arguments):
                     "experiments.dual_live"
                 ).main(forwarded)
             else:
-                forwarded = [
-                    "--config", paths[0],
-                    "--execute",
-                    "--experiment-id", run_name,
-                ]
 
-                status = import_module(
-                    "experiments.run_live"
-                ).main(forwarded)
+
+                status = import_module("experiments.run_live").run_configured(
+                    documents[0], execute=True,
+                    experiment_id=run_name,
+                )
 
             if status != 0:
                 if parsed.analyze is not None:
@@ -274,9 +271,7 @@ def _unified_main(arguments):
                     "--config", paths[1],
                 ])
 
-            return import_module(
-                "experiments.run_live"
-            ).main(["--config", paths[0], "--dry-run"])
+            return import_module("experiments.run_live").run_configured(documents[0])
 
         return _unified_analyze(documents[0], run_name)
     except ValueError as error:

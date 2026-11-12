@@ -10,7 +10,9 @@ from pathlib import Path
 import re
 import sys
 
-from experiments.settings import resolve_single, require_ceilings
+from experiments.settings import require_ceilings
+from experiments.settings import settings_for as _settings_for
+from experiments.settings import new_id as _new_id
 
 from experiments.acquisition_budget import build_acquisition_plan
 from experiments.config import (
@@ -394,54 +396,42 @@ def execute_live(
     return report, directory
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(
-        description=(
-            "Preview or explicitly execute a recorded "
-            "preconditioning experiment."
-        ),
-        epilog=(
-            "Supplied DUT ratings and operator ceilings are not "
-            "independent verification of the operating envelope, "
-            "wiring, datasheet limits, or physical protection."
-        ),
-    )
-    parser.add_argument("--config", required=True)
-
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true")
-    mode.add_argument("--execute", action="store_true")
-
-    parser.add_argument("--experiment-id")
-    parser.add_argument("--confirm-specimen", help=argparse.SUPPRESS)
-    parser.add_argument("--expected-serial")
-    parser.add_argument("--max-voltage-v", type=float)
-    parser.add_argument("--max-current-a", type=float)
-    parser.add_argument(
-        "--maximum-records",
-        type=int,
-        default=100000,
-    )
-    parser.add_argument(
-        "--timeout-ms",
-        type=int,
-        default=5000,
-    )
-    parser.add_argument("--visa-library", default=None)
-
-    arguments = parser.parse_args(argv)
-
-
+def run_configured(
+    document=None,
+    *,
+    config_path=None,
+    execute=False,
+    experiment_id=None,
+    confirm_specimen=None,
+    expected_serial=None,
+    maximum_voltage_v=None,
+    maximum_current_a=None,
+    maximum_records=100000,
+    timeout_ms=5000,
+    visa_library=None,
+    usage_error=None,
+):
+    """Preview or execute a profile without parsing command arguments."""
     try:
-        validated = load_config(arguments.config)
-        document = validated["config"]
-        settings = resolve_single(document, arguments)
-        if arguments.execute:
+        if document is None:
+            document = load_config(config_path)["config"]
+        settings = _settings_for(
+            document,
+            expected_serial=expected_serial,
+            maximum_voltage_v=maximum_voltage_v,
+            maximum_current_a=maximum_current_a,
+        )
+        expected_serial = settings["expected_serial"]
+        maximum_voltage_v = settings["maximum_voltage_v"]
+        maximum_current_a = settings["maximum_current_a"]
+        if execute and experiment_id is None:
+            experiment_id = _new_id("experiment")
+        if execute:
             required = {
-                "--experiment-id": arguments.experiment_id,
-                "--expected-serial": arguments.expected_serial,
-                "--max-voltage-v": arguments.max_voltage_v,
-                "--max-current-a": arguments.max_current_a,
+                "--experiment-id": experiment_id,
+                "--expected-serial": expected_serial,
+                "--max-voltage-v": maximum_voltage_v,
+                "--max-current-a": maximum_current_a,
             }
 
             missing = [
@@ -451,18 +441,20 @@ def main(argv=None):
             ]
 
             if missing:
-                parser.error(
-                    "--execute requires " + ", ".join(missing)
-                )
+                message = "--execute requires " + ", ".join(missing)
+                if usage_error is not None:
+                    usage_error(message)
+                print(message, file=sys.stderr)
+                raise SystemExit(2)
 
         require_ceilings(settings, execution_preview(
-            document, maximum_records=arguments.maximum_records
+            document, maximum_records=maximum_records
         ))
 
-        if not arguments.execute:
+        if not execute:
             preview = execution_preview(
                 document,
-                maximum_records=arguments.maximum_records,
+                maximum_records=maximum_records,
             )
             print(json.dumps(
                 preview,
@@ -474,14 +466,14 @@ def main(argv=None):
 
         report, directory = execute_live(
             document,
-            experiment_id=arguments.experiment_id,
-            confirm_specimen=arguments.confirm_specimen,
-            expected_serial=arguments.expected_serial,
-            maximum_voltage_v=arguments.max_voltage_v,
-            maximum_current_a=arguments.max_current_a,
-            maximum_records=arguments.maximum_records,
-            timeout_ms=arguments.timeout_ms,
-            visa_library=arguments.visa_library,
+            experiment_id=experiment_id,
+            confirm_specimen=confirm_specimen,
+            expected_serial=expected_serial,
+            maximum_voltage_v=maximum_voltage_v,
+            maximum_current_a=maximum_current_a,
+            maximum_records=maximum_records,
+            timeout_ms=timeout_ms,
+            visa_library=visa_library,
         )
 
         print(json.dumps({
@@ -533,6 +525,59 @@ def main(argv=None):
             if isinstance(error, KeyboardInterrupt)
             else 1
         )
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Preview or explicitly execute a recorded "
+            "preconditioning experiment."
+        ),
+        epilog=(
+            "Supplied DUT ratings and operator ceilings are not "
+            "independent verification of the operating envelope, "
+            "wiring, datasheet limits, or physical protection."
+        ),
+    )
+    parser.add_argument("--config", required=True)
+
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--execute", action="store_true")
+
+    parser.add_argument("--experiment-id")
+    parser.add_argument("--confirm-specimen", help=argparse.SUPPRESS)
+    parser.add_argument("--expected-serial")
+    parser.add_argument("--max-voltage-v", type=float)
+    parser.add_argument("--max-current-a", type=float)
+    parser.add_argument(
+        "--maximum-records",
+        type=int,
+        default=100000,
+    )
+    parser.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=5000,
+    )
+    parser.add_argument("--visa-library", default=None)
+
+    arguments = parser.parse_args(argv)
+
+
+    return run_configured(
+        config_path=arguments.config,
+        execute=arguments.execute,
+        experiment_id=arguments.experiment_id,
+        confirm_specimen=arguments.confirm_specimen,
+        expected_serial=arguments.expected_serial,
+        maximum_voltage_v=arguments.max_voltage_v,
+        maximum_current_a=arguments.max_current_a,
+        maximum_records=arguments.maximum_records,
+        timeout_ms=arguments.timeout_ms,
+        visa_library=arguments.visa_library,
+        usage_error=parser.error,
+    )
 
 
 if __name__ == "__main__":
