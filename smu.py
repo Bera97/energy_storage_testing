@@ -259,12 +259,7 @@ def _unified_main(arguments):
 
         if parsed.preview:
             if len(documents) == 2:
-                return import_module(
-                    "experiments.dual_preconditioning"
-                ).main([
-                    "--config", paths[0],
-                    "--config", paths[1],
-                ])
+                return import_module("experiments.dual_preconditioning").preview_configured(documents)
 
             return import_module("experiments.run_live").run_configured(documents[0])
 

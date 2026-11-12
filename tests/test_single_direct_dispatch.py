@@ -2,6 +2,7 @@
 import pytest
 import experiments.run_live as single
 import experiments.dual_live as dual
+import experiments.dual_preconditioning as planner
 import test_unified_cli as unified
 @pytest.fixture(autouse=True)
 def forbid_backend_parser(monkeypatch):
@@ -9,6 +10,7 @@ def forbid_backend_parser(monkeypatch):
         pytest.fail("Modern CLI invoked the single-channel backend parser.")
     monkeypatch.setattr(single, "main", forbidden)
     monkeypatch.setattr(dual, "main", forbidden)
+    monkeypatch.setattr(planner, "main", forbidden)
 def test_preview_dispatches_directly(tmp_path, capsys):
     unified.test_preview_single_channel(tmp_path, capsys)
 def test_execute_dispatches_directly(tmp_path, monkeypatch, capsys):
@@ -34,3 +36,5 @@ def test_failed_dual_execution_skips_analysis(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "synthetic dual execution failure" in captured.err
     assert "analysis skipped" in captured.err
+def test_dual_preview_dispatches_directly(tmp_path, capsys):
+    unified.test_preview_dual_channel(tmp_path, capsys)
