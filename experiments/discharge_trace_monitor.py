@@ -17,12 +17,13 @@ Timestamp mapping:
 """
 
 from dataclasses import dataclass
-import math
 
 from experiments.discharge_controller import (
     DischargeController,
     DischargeVoltageError,
 )
+from experiments.numeric import finite_number as _finite_number
+from experiments.numeric import positive_number as _positive_number
 
 
 class DischargeMeasurementGapError(RuntimeError):
@@ -33,23 +34,6 @@ class DischargeSourceModeError(RuntimeError):
     """A record does not report current-source selection."""
 
 
-def _finite_number(value, name):
-    if isinstance(value, bool) or not isinstance(
-        value, (int, float)
-    ):
-        raise ValueError(f"{name} must be a finite number.")
-
-    try:
-        result = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be a finite number."
-        ) from error
-
-    if not math.isfinite(result):
-        raise ValueError(f"{name} must be a finite number.")
-
-    return result
 
 
 def _nonnegative_number(value, name):
@@ -61,13 +45,6 @@ def _nonnegative_number(value, name):
     return result
 
 
-def _positive_number(value, name):
-    result = _finite_number(value, name)
-
-    if result <= 0:
-        raise ValueError(f"{name} must be positive.")
-
-    return result
 
 
 @dataclass(frozen=True)

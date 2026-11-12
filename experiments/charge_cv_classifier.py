@@ -21,12 +21,12 @@ readbacks, operating limits, wiring, and protection settings.
 """
 
 
-import math
 
 from experiments.charge_controller import (
     ChargeFaultError,
     ChargePolarityError,
 )
+from experiments.numeric import finite_number as _finite_number
 
 
 class ChargeSourceModeError(RuntimeError):
@@ -37,23 +37,6 @@ class ChargeVoltageError(RuntimeError):
     """A charging record exceeds the configured software voltage ceiling."""
 
 
-def _finite_number(value, name):
-    if isinstance(value, bool) or not isinstance(
-        value, (int, float)
-    ):
-        raise ValueError(f"{name} must be a finite number.")
-
-    try:
-        result = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be a finite number."
-        ) from error
-
-    if not math.isfinite(result):
-        raise ValueError(f"{name} must be a finite number.")
-
-    return result
 
 
 class VoltageSourceCVClassifier:

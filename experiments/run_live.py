@@ -5,7 +5,6 @@ No automatic retry, resume, or external-supply control.
 
 import argparse
 import json
-import math
 from pathlib import Path
 import re
 import sys
@@ -29,26 +28,9 @@ from recording.preconditioning_experiment import (
     PreconditioningExperiment,
     _ProgressBackend,
 )
+from experiments.numeric import positive_setting_number as _positive_number
 
 
-def _positive_number(value, name):
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-    ):
-        raise ValueError(f"{name} must be finite and positive.")
-
-    try:
-        number = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be finite and positive."
-        ) from error
-
-    if not math.isfinite(number) or number <= 0:
-        raise ValueError(f"{name} must be finite and positive.")
-
-    return number
 
 
 def _error_document(error):

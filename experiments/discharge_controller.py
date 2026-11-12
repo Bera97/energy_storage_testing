@@ -13,7 +13,7 @@ capacity experiment or an electrically isolated DUT.
 """
 
 from dataclasses import dataclass
-import math
+from experiments.numeric import finite_number as _finite_number
 
 
 class DischargeFaultError(RuntimeError):
@@ -32,23 +32,6 @@ class DischargeVoltageError(RuntimeError):
     """Measured terminal voltage has invalid polarity."""
 
 
-def _finite_number(value, name):
-    if isinstance(value, bool) or not isinstance(
-        value, (int, float)
-    ):
-        raise ValueError(f"{name} must be a finite number.")
-
-    try:
-        result = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be a finite number."
-        ) from error
-
-    if not math.isfinite(result):
-        raise ValueError(f"{name} must be a finite number.")
-
-    return result
 
 
 def _positive_number(value, name):

@@ -38,29 +38,9 @@ from recording.experiment_phase_run import ExperimentPhaseRun
 from recording.experiment_phase_run import (
     _record_failure_preserving_original,
 )
+from experiments.numeric import finite_number as _finite_number
 
 
-def _finite_number(value, name, *, positive=False):
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-    ):
-        raise ValueError(f"{name} must be a finite number.")
-
-    try:
-        result = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be a finite number."
-        ) from error
-
-    if not math.isfinite(result):
-        raise ValueError(f"{name} must be a finite number.")
-
-    if positive and result <= 0:
-        raise ValueError(f"{name} must be positive.")
-
-    return result
 
 
 class RecordedPhaseExecutor:

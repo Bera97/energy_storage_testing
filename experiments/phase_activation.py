@@ -13,34 +13,13 @@ an instrument-to-host timestamp mapping.
 """
 
 from dataclasses import dataclass
-import math
 import time
 
 from drivers.dc_output import enable_dc_output
 from drivers.shutdown_reporting import attempt_shutdown_with_report
+from experiments.numeric import finite_number as _finite_number
 
 
-def _finite_number(value, name, *, positive=False):
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-    ):
-        raise ValueError(f"{name} must be a finite number.")
-
-    try:
-        result = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be a finite number."
-        ) from error
-
-    if not math.isfinite(result):
-        raise ValueError(f"{name} must be a finite number.")
-
-    if positive and result <= 0:
-        raise ValueError(f"{name} must be positive.")
-
-    return result
 
 
 @dataclass(frozen=True)

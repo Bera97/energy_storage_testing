@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass
 import math
 
 from experiments.preconditioning import build_plan
+from experiments.numeric import positive_setting_number as _positive_number
 
 
 @dataclass(frozen=True)
@@ -26,23 +27,6 @@ class AcquisitionBudget:
     maximum_records: int
 
 
-def _positive_number(value, name):
-    if isinstance(value, bool) or not isinstance(
-        value, (int, float)
-    ):
-        raise ValueError(f"{name} must be finite and positive.")
-
-    try:
-        number = float(value)
-    except (ValueError, OverflowError) as error:
-        raise ValueError(
-            f"{name} must be finite and positive."
-        ) from error
-
-    if not math.isfinite(number) or number <= 0:
-        raise ValueError(f"{name} must be finite and positive.")
-
-    return number
 
 
 def calculate_budget(
