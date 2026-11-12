@@ -1,15 +1,12 @@
 """Offline regression tests for YAML-first execution."""
 from copy import deepcopy
 import json
-from types import SimpleNamespace
 import re
 
 import pytest
 import yaml
 from experiments.config import validate_config
-from experiments.settings import (
-    new_id, require_ceilings, resolve_single, settings_for, validate_execution,
-)
+from experiments.settings import new_id, require_ceilings, settings_for, validate_execution
 import experiments.dual_live as dual
 import experiments.run_live as single
 import test_dual_phase as phase_tests
@@ -84,15 +81,32 @@ def test_generated_ids_are_valid_and_unique():
     assert all(re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value) for value in values)
 
 
-def test_single_resolution_needs_no_confirmation():
-    args = SimpleNamespace(execute=True, experiment_id=None, expected_serial=None, max_voltage_v=None, max_current_a=None)
-    config = {"execution": dict(expected_serial="TEST", maximum_voltage_v=6, maximum_current_a=1)}
-    resolve_single(config, args)
-    assert args.expected_serial == "TEST"
-    assert args.max_voltage_v == 6
-    assert args.max_current_a == 1
-    assert args.experiment_id.startswith("experiment_")
-    assert not hasattr(args, "confirm_specimen")
+def test_single_operation_resolves_yaml_settings(
+    pair, tmp_path, monkeypatch, capsys
+):
+    documents, _ = save_profiles(pair, tmp_path)
+    document = documents[0]
+    calls = []
+    def fake_execute(config, **kwargs):
+        calls.append((config, kwargs))
+        return (
+            {
+                "completed_phase_count": 4,
+                "shutdown_verified": True,
+            },
+            tmp_path / "synthetic_result",
+        )
+    monkeypatch.setattr(single, "execute_live", fake_execute)
+    assert single.run_configured(document, execute=True) == 0
+    assert len(calls) == 1
+    supplied_document, options = calls[0]
+    assert supplied_document == document
+    assert options["expected_serial"] == document["execution"]["expected_serial"]
+    assert options["maximum_voltage_v"] == document["execution"]["maximum_voltage_v"]
+    assert options["maximum_current_a"] == document["execution"]["maximum_current_a"]
+    assert options["confirm_specimen"] is None
+    assert options["experiment_id"].startswith("experiment_")
+    assert json.loads(capsys.readouterr().out)["state"] == "completed"
 
 
 def test_ceiling_check_rejects_insufficient_limit():

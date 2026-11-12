@@ -300,18 +300,3 @@ def require_ceilings(settings, preview):
 def new_id(prefix):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
     return f"{prefix}_{stamp}_{uuid4().hex[:8]}"
-
-
-def resolve_single(config, arguments):
-    settings = settings_for(
-        config,
-        expected_serial=arguments.expected_serial,
-        maximum_voltage_v=arguments.max_voltage_v,
-        maximum_current_a=arguments.max_current_a,
-    )
-    arguments.expected_serial = settings["expected_serial"]
-    arguments.max_voltage_v = settings["maximum_voltage_v"]
-    arguments.max_current_a = settings["maximum_current_a"]
-    if arguments.execute and arguments.experiment_id is None:
-        arguments.experiment_id = new_id("experiment")
-    return settings
