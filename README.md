@@ -188,10 +188,31 @@ Optional transport/planning overrides remain available through command-specific 
 | `smu.py` | Public CLI and single-channel whole-experiment analysis |
 | `configs/` | Specimen-specific profiles |
 | `experiments/` | Configuration, planning, monitoring coordination, execution |
+| `experiments/charge_controller.py`, `experiments/discharge_controller.py` | Hardware-free charge qualification and phase termination decisions |
+| `experiments/phase_polling.py` | Shared polling, deadlines, shutdown and finalization coordination |
 | `experiments/dual_analysis.py` | Whole-batch dual analysis export |
 | `drivers/` | Instrument/session/channel and SCPI helpers |
-| `acquisition/` | Acquisition and trace transports |
+| `acquisition/` | Acquisition and trace transports; `phase_trace_transport.py` shares the single-channel charge/discharge trace lifecycle |
 | `recording/` | CSV, metadata, manifests, finalization |
 | `analysis/` | Offline validation, calculation, phase export |
 | `checks/` | Deliberately invoked hardware diagnostics |
 | `tests/` | Offline automated tests |
+
+The CLI commands above, including the legacy subcommands, remain the supported
+entry points. Internally, charge and discharge trace transport now share
+`acquisition.phase_trace_transport` rather than separate transport modules;
+the CV classifier is part of `experiments.charge_controller`. The existing
+single-channel and shared-session dual-channel paths retain their respective
+execution and shutdown boundaries.
+
+## Future extension points
+
+Separate-test charging-current, fixed-duration CV-hold, discharge-current and
+constant-power discharge sweeps, and time-variable or pulsed current and power
+discharge are not implemented. Future work can build on the existing planning,
+hardware-free phase decisions, polling/monitoring, execution, and recording
+boundaries, with explicit validation and evidence for any new procedure.
+It must also account for the independent shared-session dual-channel path.
+These future procedures do not change current YAML modes or phase semantics:
+the existing charge hold qualifies consecutive low-current CV observations;
+the maximum CV duration is an unsuccessful timeout, not a successful timed hold.
