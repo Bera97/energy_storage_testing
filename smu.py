@@ -11,35 +11,13 @@ from analysis.export_experiment import export_experiment
 
 
 
-def _analyze_main(argv):
-    parser = argparse.ArgumentParser(
-        prog="python -m smu analyze",
-        description=(
-            "Analyze all active phases of a completed, "
-            "unchanged experiment."
-        ),
-    )
-
-    parser.add_argument(
-        "directory",
-        help="Directory containing experiment.json",
-    )
-    parser.add_argument(
-        "output_directory",
-        help="New destination; parent must exist",
-    )
-    parser.add_argument(
-        "--phase-root",
-        default=None,
-    )
-
-    arguments = parser.parse_args(argv)
-
+def _analyze_single(directory, output_directory, *, phase_root=None):
+    """Export and print single-run analysis without parsing arguments."""
     try:
         report = export_experiment(
-            arguments.directory,
-            arguments.output_directory,
-            phase_root=arguments.phase_root,
+            directory,
+            output_directory,
+            phase_root=phase_root,
         )
     except (
         OSError,
@@ -62,7 +40,7 @@ def _analyze_main(argv):
 
     print(
         "Analysis: "
-        f"{Path(arguments.output_directory).resolve()}"
+        f"{Path(output_directory).resolve()}"
     )
     print(
         f"{'Phase':>5} "
@@ -159,10 +137,10 @@ def _unified_analyze(document, run_name):
     if (source / "dual_experiment.json").is_file():
         return import_module(
             "experiments.dual_analysis"
-        ).main([str(source), str(destination)])
+        ).analyze_run(str(source), str(destination))
 
     if (source / "experiment.json").is_file():
-        return _analyze_main([str(source), str(destination)])
+        return _analyze_single(str(source), str(destination))
 
     raise ValueError(
         f"{source.resolve()} contains no experiment manifest; "

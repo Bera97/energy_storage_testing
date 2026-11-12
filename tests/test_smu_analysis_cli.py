@@ -33,10 +33,11 @@ def test_analyze_cli_success_matches_exported_table(
     completed_case, tmp_path, capsys
 ):
     destination = tmp_path / "analysis"
-    result = smu._analyze_main([
-        str(completed_case.directory()), str(destination),
-        "--phase-root", str(completed_case.root),
-    ])
+    result = smu._analyze_single(
+        str(completed_case.directory()),
+        str(destination),
+        phase_root=str(completed_case.root),
+    )
     assert result == 0
     assert (destination / "ANALYSIS_COMPLETE").is_file()
     report = json.loads(

@@ -302,10 +302,10 @@ def test_export_failure_leaves_no_completion_marker(
 def test_analyze_cli_reports_failure(tmp_path, capsys):
     destination = tmp_path / "analysis"
 
-    result = smu._analyze_main([
+    result = smu._analyze_single(
         str(tmp_path / "missing"),
         str(destination),
-    ])
+    )
 
     assert result == 1
     assert "Analysis failed:" in capsys.readouterr().err

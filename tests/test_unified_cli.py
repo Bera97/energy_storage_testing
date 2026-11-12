@@ -301,11 +301,11 @@ def test_analyze_uses_yaml_directories(
     )
     forwarded = []
 
-    def fake_analyze_main(argv):
-        forwarded.append(list(argv))
+    def fake_analyze_single(directory, output_directory):
+        forwarded.append([directory, output_directory])
         return 0
 
-    monkeypatch.setattr(smu, "_analyze_main", fake_analyze_main)
+    monkeypatch.setattr(smu, "_analyze_single", fake_analyze_single)
 
     assert smu.main(["--config", path, "--analyze", run_name]) == 0
 

@@ -181,30 +181,12 @@ def analyze_batch(directory, output_directory):
     return report
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(
-        prog="python -m smu analyze-dual",
-        description=(
-            "Analyze all completed active phases of a finished, "
-            "unchanged dual batch."
-        ),
-    )
-
-    parser.add_argument(
-        "directory",
-        help="Directory containing dual_experiment.json",
-    )
-    parser.add_argument(
-        "output_directory",
-        help="New destination outside the batch",
-    )
-
-    arguments = parser.parse_args(argv)
-
+def analyze_run(directory, output_directory):
+    """Export and print dual-run analysis without parsing arguments."""
     try:
         report = analyze_batch(
-            arguments.directory,
-            arguments.output_directory,
+            directory,
+            output_directory,
         )
     except (
         OSError,
@@ -227,7 +209,7 @@ def main(argv=None):
 
     print(
         "Analysis: "
-        f"{Path(arguments.output_directory).resolve()}"
+        f"{Path(output_directory).resolve()}"
     )
     print(
         f"{'CH':>2} "
@@ -265,6 +247,32 @@ def main(argv=None):
         )
 
     return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="python -m smu analyze-dual",
+        description=(
+            "Analyze all completed active phases of a finished, "
+            "unchanged dual batch."
+        ),
+    )
+
+    parser.add_argument(
+        "directory",
+        help="Directory containing dual_experiment.json",
+    )
+    parser.add_argument(
+        "output_directory",
+        help="New destination outside the batch",
+    )
+
+    arguments = parser.parse_args(argv)
+
+    return analyze_run(
+        arguments.directory,
+        arguments.output_directory,
+    )
 
 
 if __name__ == "__main__":
