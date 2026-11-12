@@ -34,7 +34,7 @@ from checks.check_dc_resistor import (
 from drivers.dc_output import enable_dc_output
 from drivers.keysight_b2902b import KeysightB2902B
 from acquisition.monitored_acquisition import StopLimits
-from acquisition.streaming_acquisition import (
+from acquisition.monitored_acquisition import (
     StreamingMonitoredAcquisition,
 )
 from recording.recorded_acquisition import (

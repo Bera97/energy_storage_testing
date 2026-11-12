@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 from acquisition.monitored_acquisition import StopLimits
 from acquisition.spot_acquisition import SMUReading
-from acquisition.streaming_acquisition import (
+from acquisition.monitored_acquisition import (
     StreamingMonitoredAcquisition,
 )
 from recording.recorded_acquisition import (

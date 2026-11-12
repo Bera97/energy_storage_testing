@@ -12,7 +12,7 @@ from unittest.mock import patch
 from recording.incremental_csv import IncrementalCSVWriter
 from acquisition.monitored_acquisition import StopLimits
 from acquisition.spot_acquisition import SMUReading
-from acquisition.streaming_acquisition import (
+from acquisition.monitored_acquisition import (
     StreamingMonitoredAcquisition,
 )
 

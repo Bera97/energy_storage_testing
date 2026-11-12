@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from recording.run_preflight import prepare_run_destination
+from recording.run_data import prepare_run_destination
 
 
 class RunPreflightTests(unittest.TestCase):
@@ -74,7 +74,7 @@ class RunPreflightTests(unittest.TestCase):
 
     def test_probe_failure_propagates_without_creating_run(self):
         with patch(
-            "recording.run_preflight.tempfile.TemporaryFile",
+            "recording.run_data.tempfile.TemporaryFile",
             side_effect=PermissionError("simulated write failure"),
         ):
             with self.assertRaises(PermissionError):
