@@ -350,7 +350,12 @@ def run_configured(
             "Both profiles must specify the same expected instrument serial.",
         )
         plan = build_dual_plan(documents)
-        for setting, preview in zip(settings, plan["channels"]):
+        settings_by_channel = {
+            document["instrument"]["channel"]: setting
+            for document, setting in zip(documents, settings)
+        }
+        for preview in plan["channels"]:
+            setting = settings_by_channel[preview["channel"]]
             require_ceilings(setting, preview)
         if not execute_requested:
             print(json.dumps(plan, indent=2, allow_nan=False))

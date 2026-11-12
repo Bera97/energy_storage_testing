@@ -192,3 +192,102 @@ def test_public_execution_does_not_prompt(
     else:
         assert executions[0][2] == "TESTSERIAL"
     assert '"state": "completed"' in capsys.readouterr().out
+def _channel_pairing_profiles(tmp_path, setting):
+    from copy import deepcopy
+    template = _public_profiles(tmp_path, 1)[0]
+    documents = []
+    for channel in (1, 2):
+        document = deepcopy(template)
+        document["instrument"]["channel"] = channel
+        document["dut"]["specimen_id"] = f"PAIRING-CH{channel}"
+        document["output"]["file_name"] = f"pairing_ch{channel}"
+        if setting == "maximum_current_a":
+            fraction = 0.1 if channel == 1 else 0.4
+            document["charge"]["current"] = {
+                "current_fraction": fraction,
+            }
+            document["discharge"]["current"] = {
+                "basis": "rated_max_discharge_fraction",
+                "factor": fraction,
+            }
+            document["charge"]["termination"]["current_reference"] = (
+                "configured_charge_current"
+            )
+            document["charge"]["termination"]["current_factor"] = 0.05
+        else:
+            scale = 1 if channel == 1 else 2
+            ratings = document["dut"]["ratings"]
+            ratings["minimum_voltage_v"] *= scale
+            ratings["maximum_voltage_v"] *= scale
+            document["charge"]["target_voltage_v"] *= scale
+            document["charge"]["cv_voltage_tolerance_v"] *= scale
+            document["discharge"]["cutoff_voltage_v"] *= scale
+        preview = single.execution_preview(document)
+        document["execution"] = {
+            "expected_serial": "TESTSERIAL",
+            "maximum_voltage_v": preview["required_preflight_ceiling_v"],
+            "maximum_current_a": preview["required_preflight_ceiling_a"],
+        }
+        documents.append(document)
+    requirements = [
+        document["execution"][setting]
+        for document in documents
+    ]
+    assert 0 < requirements[0] < requirements[1]
+    return documents, requirements
+@pytest.mark.parametrize("reverse", [False, True], ids=["normal", "reversed"])
+@pytest.mark.parametrize(
+    "setting",
+    ["maximum_voltage_v", "maximum_current_a"],
+)
+def test_public_dual_valid_ceilings_follow_channel_identity(
+    tmp_path, monkeypatch, capsys, reverse, setting
+):
+    documents, _ = _channel_pairing_profiles(tmp_path, setting)
+    entered = _block_public_execution(monkeypatch)
+    executed = []
+    def fake_execute(plan, directory, serial):
+        executed.append((plan, directory, serial))
+        return {
+            "state": "completed",
+            "final_stop_verified": True,
+            "session_close_returned": True,
+        }
+    monkeypatch.setattr(dual, "execute", fake_execute)
+    supplied = list(reversed(documents)) if reverse else documents
+    arguments = _write_public_profiles(tmp_path, supplied)
+    assert _public_status([*arguments, "--execute"]) == 0
+    assert entered == []
+    assert len(executed) == 1
+    assert [
+        preview["channel"] for preview in executed[0][0]["channels"]
+    ] == [1, 2]
+    assert executed[0][2] == "TESTSERIAL"
+    assert '"state": "completed"' in capsys.readouterr().out
+@pytest.mark.parametrize("reverse", [False, True], ids=["normal", "reversed"])
+@pytest.mark.parametrize(
+    "setting",
+    ["maximum_voltage_v", "maximum_current_a"],
+)
+@pytest.mark.parametrize("insufficient_channel", [1, 2])
+def test_public_dual_insufficient_ceiling_is_checked_on_its_channel(
+    tmp_path, monkeypatch, capsys, reverse, setting, insufficient_channel
+):
+    documents, requirements = _channel_pairing_profiles(tmp_path, setting)
+    if insufficient_channel == 1:
+        documents[0]["execution"][setting] = requirements[0] / 2
+    else:
+        # A positional comparison in reversed order would accept these:
+        # CH2's ceiling covers CH1, and CH1's ceiling covers CH2.
+        documents[0]["execution"][setting] = requirements[1]
+        documents[1]["execution"][setting] = (
+            requirements[0] + requirements[1]
+        ) / 2
+    supplied = list(reversed(documents)) if reverse else documents
+    arguments = _write_public_profiles(tmp_path, supplied)
+    entered = _block_public_execution(monkeypatch)
+    assert _public_status([*arguments, "--execute"]) == 1
+    assert entered == []
+    error = capsys.readouterr().err
+    assert f"execution.{setting}" in error
+    assert "below the configured requirement" in error
