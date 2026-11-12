@@ -8,7 +8,7 @@ from copy import deepcopy
 import math
 import time
 from acquisition.dual_trace import ChannelTraceAcquisition
-from experiments.charge_cv_classifier import VoltageSourceCVClassifier
+from experiments.charge_controller import VoltageSourceCVClassifier
 from experiments.charge_trace_monitor import ChargeTraceMonitor
 from experiments.discharge_trace_monitor import DischargeTraceMonitor
 from experiments.first_sample_trace_monitor import create_trace_monitor

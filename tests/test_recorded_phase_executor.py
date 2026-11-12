@@ -14,8 +14,8 @@ import test_preconditioning_plan as plan_tests
 from test_charge_trace_transport import FakeAcquisition
 
 from acquisition.buffered_acquisition import BufferedAcquisition
-from acquisition.charge_trace_transport import ChargeTraceTransport
-from acquisition.discharge_trace_transport import (
+from acquisition.phase_trace_transport import (
+    ChargeTraceTransport,
     DischargeTraceTransport,
 )
 from acquisition.spot_acquisition import SMUReading

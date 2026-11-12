@@ -8,8 +8,8 @@ from test_charge_trace_transport import (
     FakeWriter,
 )
 
-from acquisition.charge_trace_transport import ChargeTraceTransport
-from acquisition.discharge_trace_transport import (
+from acquisition.phase_trace_transport import (
+    ChargeTraceTransport,
     DischargeTraceTransport,
 )
 
@@ -136,6 +136,65 @@ class FirstSampleTransportTimingTests(unittest.TestCase):
             ],
             "first_recorded_sample",
         )
+
+    def test_channel_two_transport_lifecycle_for_both_phases(self):
+        cases = (
+            (
+                ChargeTraceTransport,
+                "acquire_charge",
+                self.charge_phase,
+                {"cv_classifier": lambda item: True},
+                [
+                    reading(100.0, 4.1, 0.05, 0),
+                    reading(101.0, 4.1, 0.05, 0),
+                    reading(102.0, 4.1, 0.05, 0),
+                ],
+                "cv_current_termination",
+                "charge_loop_report",
+            ),
+            (
+                DischargeTraceTransport,
+                "acquire_discharge",
+                self.discharge_phase,
+                {"maximum_voltage_v": 4.2},
+                [
+                    reading(100.0, 3.8, -1.0, 1),
+                    reading(101.0, 2.7, -1.0, 1),
+                ],
+                "voltage_min",
+                "discharge_loop_report",
+            ),
+        )
+        for transport_type, method, phase, extra, records, reason, report_name in cases:
+            for fail in (False, True):
+                with self.subTest(phase=phase["type"], fail=fail):
+                    acquisition = FakeAcquisition([records, []])
+                    acquisition.channel = 2
+                    writer = FakeWriter()
+                    transport = transport_type(acquisition, writer)
+                    acquire = getattr(transport, method)
+                    if fail:
+                        error = OSError("disk failure")
+                        writer.error = error
+                        with self.assertRaises(OSError) as caught:
+                            acquire(phase, **extra, **self.common_arguments())
+                        self.assertIs(caught.exception, error)
+                        self.assertEqual(error.partial_readings, tuple(records))
+                        self.assertTrue(
+                            getattr(error, report_name)["shutdown_verified"]
+                        )
+                    else:
+                        report = acquire(
+                            phase, **extra, **self.common_arguments()
+                        )
+                        self.assertEqual(report["stop_reason"], reason)
+                        self.assertEqual(writer.rows, records)
+                        self.assertEqual(
+                            acquisition.commands,
+                            [":INIT:ACQ (@2)", ":TRAC2:FEED:CONT NEV"],
+                        )
+                    self.assertGreaterEqual(acquisition._smu.shutdown_calls, 1)
+                    self.assertFalse(acquisition._trace_ready)
 
     def test_first_sample_mode_requires_host_phase_start(self):
         acquisition = FakeAcquisition([])

@@ -6,8 +6,6 @@ import unittest
 from experiments.charge_controller import (
     ChargeFaultError,
     ChargePolarityError,
-)
-from experiments.charge_cv_classifier import (
     ChargeSourceModeError,
     ChargeVoltageError,
     VoltageSourceCVClassifier,

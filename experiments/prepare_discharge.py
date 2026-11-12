@@ -10,7 +10,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 from acquisition.buffered_acquisition import BufferedAcquisition
-from acquisition.discharge_trace_transport import (
+from acquisition.phase_trace_transport import (
     DischargeTraceTransport,
 )
 from acquisition.monitored_acquisition import MonitoredAcquisition

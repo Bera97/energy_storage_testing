@@ -1,4 +1,4 @@
-"""Discharge polling bound to an existing monitored acquisition.
+"""Phase polling bound to an existing monitored trace acquisition.
 
 No output enabling is performed.
 
@@ -12,7 +12,8 @@ Caller responsibilities:
 - Close the writer and finalize run metadata.
 
 This adapter finalizes trace retrieval, not the complete recording.
-Measurements remain retained in memory.
+
+Only one controller/thread may use the instrument.
 """
 
 import time
@@ -23,18 +24,18 @@ from experiments.phase_safety_monitor import (
 
 from experiments.phase_polling import (
     TracePoll,
+    run_charge_polling,
     run_discharge_polling,
 )
-from experiments.discharge_trace_monitor import (
-    DischargeTraceMonitor,
-)
+from experiments.charge_trace_monitor import ChargeTraceMonitor
+from experiments.discharge_trace_monitor import DischargeTraceMonitor
 from experiments.first_sample_trace_monitor import (
     create_trace_monitor,
     trace_timing_evidence,
 )
 
 
-class DischargeTraceTransport:
+class _PhaseTraceTransport:
     """Bind one configured acquisition and one fresh CSV writer."""
 
     def __init__(self, acquisition, writer):
@@ -81,21 +82,22 @@ class DischargeTraceTransport:
                 "CSV flushed count differs after saving."
             )
 
-    def acquire_discharge(
+    def _acquire(
         self,
         phase,
         *,
+        phase_name,
+        monitor_factory,
+        run_polling,
         instrument_timestamp_origin_s,
         phase_elapsed_at_origin_s,
-        maximum_sample_gap_s,
-        maximum_voltage_v,
         poll_interval_s=0.05,
         phase_started_s=None,
         clock=time.monotonic,
         sleep=time.sleep,
         measurement_time_basis="explicit_mapping",
     ):
-        """Acquire one discharge phase without enabling output.
+        """Acquire one phase without enabling output.
 
         Timing policies:
         - explicit_mapping: caller supplies both timestamp origins.
@@ -107,14 +109,14 @@ class DischargeTraceTransport:
         full phase using phase_started_s.
 
         Execution errors retain partial_readings and receive
-        discharge_loop_report when polling has started.
+        the phase loop report when the polling loop has started.
 
         Setup can fail before execution handling. The caller's
         outer shutdown boundary remains mandatory.
         """
         if self._used:
             raise RuntimeError(
-                "Use a fresh transport for each discharge phase."
+                f"Use a fresh transport for each {phase_name} phase."
             )
 
         acquisition = self.acquisition
@@ -128,16 +130,6 @@ class DischargeTraceTransport:
             )
 
         self._check_writer(fresh=True)
-
-        def monitor_factory(instrument_origin, elapsed_origin):
-            return DischargeTraceMonitor(
-                phase,
-                save_batch=self._save_batch,
-                instrument_timestamp_origin_s=instrument_origin,
-                phase_elapsed_at_origin_s=elapsed_origin,
-                maximum_sample_gap_s=maximum_sample_gap_s,
-                maximum_voltage_v=maximum_voltage_v,
-            )
 
         monitor = create_trace_monitor(
             monitor_factory,
@@ -216,7 +208,7 @@ class DischargeTraceTransport:
                 )
 
         try:
-            report = run_discharge_polling(
+            report = run_polling(
                 monitor=monitor,
                 start=start,
                 poll=poll,
@@ -252,7 +244,7 @@ class DischargeTraceTransport:
 
             loop_report = getattr(
                 original_error,
-                "discharge_loop_report",
+                f"{phase_name}_loop_report",
                 None,
             )
 
@@ -270,3 +262,87 @@ class DischargeTraceTransport:
         finally:
             acquisition.readings = tuple(records)
             acquisition._trace_ready = False
+
+
+class ChargeTraceTransport(_PhaseTraceTransport):
+    """Acquire one charge phase without enabling output."""
+
+    def acquire_charge(
+        self,
+        phase,
+        *,
+        cv_classifier,
+        instrument_timestamp_origin_s,
+        phase_elapsed_at_origin_s,
+        maximum_sample_gap_s,
+        poll_interval_s=0.05,
+        phase_started_s=None,
+        clock=time.monotonic,
+        sleep=time.sleep,
+        measurement_time_basis="explicit_mapping",
+    ):
+        def monitor_factory(instrument_origin, elapsed_origin):
+            return ChargeTraceMonitor(
+                phase,
+                save_batch=self._save_batch,
+                cv_classifier=cv_classifier,
+                instrument_timestamp_origin_s=instrument_origin,
+                phase_elapsed_at_origin_s=elapsed_origin,
+                maximum_sample_gap_s=maximum_sample_gap_s,
+            )
+
+        return self._acquire(
+            phase,
+            phase_name="charge",
+            monitor_factory=monitor_factory,
+            run_polling=run_charge_polling,
+            instrument_timestamp_origin_s=instrument_timestamp_origin_s,
+            phase_elapsed_at_origin_s=phase_elapsed_at_origin_s,
+            poll_interval_s=poll_interval_s,
+            phase_started_s=phase_started_s,
+            clock=clock,
+            sleep=sleep,
+            measurement_time_basis=measurement_time_basis,
+        )
+
+
+class DischargeTraceTransport(_PhaseTraceTransport):
+    """Acquire one discharge phase without enabling output."""
+
+    def acquire_discharge(
+        self,
+        phase,
+        *,
+        instrument_timestamp_origin_s,
+        phase_elapsed_at_origin_s,
+        maximum_sample_gap_s,
+        maximum_voltage_v,
+        poll_interval_s=0.05,
+        phase_started_s=None,
+        clock=time.monotonic,
+        sleep=time.sleep,
+        measurement_time_basis="explicit_mapping",
+    ):
+        def monitor_factory(instrument_origin, elapsed_origin):
+            return DischargeTraceMonitor(
+                phase,
+                save_batch=self._save_batch,
+                instrument_timestamp_origin_s=instrument_origin,
+                phase_elapsed_at_origin_s=elapsed_origin,
+                maximum_sample_gap_s=maximum_sample_gap_s,
+                maximum_voltage_v=maximum_voltage_v,
+            )
+
+        return self._acquire(
+            phase,
+            phase_name="discharge",
+            monitor_factory=monitor_factory,
+            run_polling=run_discharge_polling,
+            instrument_timestamp_origin_s=instrument_timestamp_origin_s,
+            phase_elapsed_at_origin_s=phase_elapsed_at_origin_s,
+            poll_interval_s=poll_interval_s,
+            phase_started_s=phase_started_s,
+            clock=clock,
+            sleep=sleep,
+            measurement_time_basis=measurement_time_basis,
+        )
