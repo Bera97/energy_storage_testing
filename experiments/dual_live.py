@@ -407,14 +407,14 @@ def run_configured(
 def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] == "dual-check":
-        parser = argparse.ArgumentParser(prog="python -m smu dual-check")
+        parser = argparse.ArgumentParser(prog="dual-batch validation backend")
         parser.add_argument("directory")
         args = parser.parse_args(arguments[1:])
         result = check_batch(args.directory)
         print(json.dumps(result, indent=2, allow_nan=False))
         return 0 if result["valid"] else 1
     parser = argparse.ArgumentParser(
-        prog="python -m smu dual-run",
+        prog="dual-execution backend",
         description="Supervised YAML-configured dual preconditioning. Defaults to preview.",
     )
     parser.add_argument("--config", action="append", required=True)

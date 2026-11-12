@@ -375,7 +375,7 @@ def analyze_run(directory, output_directory):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog="python -m smu analyze-dual",
+        prog="dual-analysis backend",
         description=(
             "Analyze all completed active phases of a finished, "
             "unchanged dual batch."

@@ -80,7 +80,7 @@ def preview_configured(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog="python -m smu dual-plan",
+        prog="dual-planning backend",
         description=(
             "Validate two profiles without hardware access. "
             "No live execution."

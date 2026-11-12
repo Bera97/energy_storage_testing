@@ -176,23 +176,28 @@ YAML; conflicting values are rejected.
 `session_close_returned` means the driver's close method returned, not
 independent proof that every underlying resource closed.
 ## Layout
-
 | Path | Responsibility |
 |---|---|
-| `smu.py` | Public flag parsing, operation dispatch, and single-run analysis presentation |
-| `configs/` | Specimen-specific profiles |
-| `experiments/` | Configuration, planning, phase decisions, and execution coordination |
+| `smu.py` | Public flag parsing and operation dispatch |
+| `configs/` | Specimen-specific YAML profiles |
+| `experiments/config.py` | Configuration loading and schema validation |
 | `experiments/settings.py` | Current and execution-setting resolution |
-| `experiments/charge_setup.py` | Outputs-off charge source configuration and preparation |
-| `experiments/discharge_setup.py` | Outputs-off discharge source configuration and preparation |
-| `experiments/trace_timing.py` | First-sample timing and host-deadline adapters |
-| `analysis/dual_experiment.py` | Whole-batch dual analysis export |
-| `drivers/` | Instrument/session/channel and SCPI helpers |
-| `acquisition/` | Acquisition and trace transports |
-| `recording/` | CSV, metadata, manifests, finalization |
-| `analysis/` | Offline validation, calculation, phase export, and single-experiment export |
-| `checks/` | Deliberately invoked hardware diagnostics |
-| `tests/` | Offline automated tests |
+| `experiments/numeric.py` | Shared numeric validation policies |
+| `experiments/charge_setup.py` | Outputs-off charge configuration and preparation |
+| `experiments/discharge_setup.py` | Outputs-off discharge configuration and preparation |
+| `experiments/trace_timing.py` | Measurement-time mapping and host-deadline adapters |
+| `experiments/` | Planning, phase controllers, monitoring, and execution coordination |
+| `drivers/` | Instrument/session/channel I/O and SCPI helpers |
+| `acquisition/monitored_acquisition.py` | Monitored acquisition and streaming CSV subclass |
+| `acquisition/phase_trace_transport.py` | Shared charge/discharge trace lifecycle |
+| `acquisition/` | Spot, buffered, monitored, and dual trace acquisition |
+| `recording/run_data.py` | Snapshot export and destination preparation |
+| `recording/` | CSV, metadata, manifests, and recording finalization |
+| `analysis/export_experiment.py` | Single-experiment export and shared console presentation |
+| `analysis/dual_experiment.py` | Persisted dual-batch validation and analysis export |
+| `analysis/` | Offline evidence validation and numerical analysis |
+| `checks/` | Explicit developer diagnostics; not run automatically |
+| `tests/` | Offline regression tests |
 ## Extension points and deferred experiments
 The implemented procedure remains preconditioning:
 CC-CV charge, rest, constant-current discharge, rest.
