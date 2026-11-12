@@ -238,8 +238,8 @@ def run_simulation(
 ):
     if not isinstance(backend, SimulatedInstrument):
         raise TypeError(
-            "Only SimulatedInstrument is supported; "
-            "no live backend exists."
+            "run_simulation accepts only SimulatedInstrument; "
+            "use the separate live-execution API for hardware."
         )
     return _run_backend(
         plan, backend,
@@ -250,7 +250,7 @@ def run_simulation(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog="python -m smu dual-simulate",
+        prog="python -m experiments.dual_coordinator",
         description=(
             "SIMULATION ONLY: "
             "no SMU connection or physical outputs."

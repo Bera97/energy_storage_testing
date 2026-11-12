@@ -187,7 +187,7 @@ def test_changed_plan_is_rejected_before_connect(plan):
     assert backend.events == []
 def test_non_simulator_backend_is_rejected(plan):
     clock = VirtualClock()
-    with pytest.raises(TypeError, match="no live backend"):
+    with pytest.raises(TypeError, match="accepts only SimulatedInstrument"):
         execute(plan, clock, object())
 def test_backend_cli_success(pair, tmp_path, capsys):
     arguments = ["dual-simulate", "--phase-duration-s", "0.1"]

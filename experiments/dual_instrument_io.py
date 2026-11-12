@@ -206,7 +206,7 @@ class DualInstrumentSession:
             self.smu.close()
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog="python -m smu dual-probe",
+        prog="python -m experiments.dual_instrument_io",
         description=(
             "Outputs-OFF session probe. "
             "No output enabling or acquisition."

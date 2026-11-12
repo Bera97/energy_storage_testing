@@ -160,9 +160,22 @@ python -m pyflakes smu.py drivers acquisition experiments recording analysis che
 python -m pytest tests -q
 git --no-pager diff --check
 ```
-The public CLI calls operation functions directly instead of constructing
-argument lists for backend parsers. Backend `main()` functions remain internal
-developer/test entry points, not additional public `python -m smu` subcommands.
+The public experiment CLI is `python -m smu`; it calls operation functions
+directly rather than constructing argument lists for backend parsers.
+The legacy `python -m experiments` planning entry point and the parsers in
+`experiments.run_live` and `experiments.dual_preconditioning` have been retired.
+Their planning, preview, and execution APIs remain available.
+
+Retained standalone developer tools include:
+- `python -m experiments.dual_coordinator`: hardware-free simulation, including
+  synthetic phase duration and channel-failure injection.
+- `python -m experiments.dual_instrument_io`: session probe; without `--connect`
+  it plans only. With `--connect` it communicates with the instrument and
+  changes configuration while verifying outputs OFF; review its prerequisites.
+
+Use `--help` on these standalone modules to inspect their arguments.
+They are not `python -m smu` subcommands. Other retained backend parsers and
+offline validation/analysis interfaces have not been retired by this cleanup.
 Offline simulation exercises virtual scheduling and synthetic endpoints.
 It does not qualify electrochemistry, live timing, physical shutdown,
 or recording durability.
