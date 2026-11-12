@@ -6,6 +6,7 @@ import json
 import pytest
 
 import smu
+from analysis.export_experiment import export_experiment
 import test_preconditioning_experiment as experiment_tests
 
 
@@ -64,7 +65,7 @@ def test_analyze_cli_success_matches_exported_table(
 def test_output_parent_must_exist(completed_case, tmp_path):
     destination = tmp_path / "missing_parent" / "analysis"
     with pytest.raises(ValueError, match="parent must already exist"):
-        smu.export_experiment(
+        export_experiment(
             completed_case.directory(), destination,
             phase_root=completed_case.root,
         )
@@ -91,7 +92,7 @@ def test_invalid_phase_references_create_no_output(
     )
     destination = tmp_path / "rejected"
     with pytest.raises(ValueError, match="validation failed"):
-        smu.export_experiment(
+        export_experiment(
             source, destination, phase_root=completed_case.root
         )
     assert not destination.exists()
@@ -104,7 +105,7 @@ def test_reference_outside_allowed_root_creates_no_output(
     allowed.mkdir()
     destination = tmp_path / "analysis"
     with pytest.raises(ValueError, match="validation failed"):
-        smu.export_experiment(
+        export_experiment(
             completed_case.directory(), destination, phase_root=allowed
         )
     assert not destination.exists()
@@ -129,7 +130,7 @@ def test_second_phase_export_failure_preserves_partial_without_marker(
     )
     destination = tmp_path / "partial"
     with pytest.raises(OSError, match="second-phase failure"):
-        smu.export_experiment(
+        export_experiment(
             completed_case.directory(), destination,
             phase_root=completed_case.root,
         )
@@ -166,7 +167,7 @@ def test_manifest_change_during_export_prevents_finalization(
     )
     destination = tmp_path / "partial"
     with pytest.raises(ValueError, match="Manifest changed during export"):
-        smu.export_experiment(
+        export_experiment(
             source, destination, phase_root=completed_case.root
         )
     assert changed
@@ -199,7 +200,7 @@ def test_failed_final_validation_prevents_completion_marker(
     )
     destination = tmp_path / "partial"
     with pytest.raises(ValueError, match="no longer validates"):
-        smu.export_experiment(
+        export_experiment(
             completed_case.directory(), destination,
             phase_root=completed_case.root,
         )

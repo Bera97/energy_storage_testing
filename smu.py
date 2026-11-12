@@ -7,7 +7,7 @@ from importlib import import_module
 from pathlib import Path
 import sys
 
-from analysis.export_experiment import export_experiment as export_experiment
+from analysis.export_experiment import export_experiment
 
 
 ROUTES = {

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 import smu
+from analysis.export_experiment import export_experiment
 import test_preconditioning_experiment as experiment_tests
 
 
@@ -174,7 +175,7 @@ def test_export_completed_experiment(
 
     before = file_snapshot(case.root)
 
-    report = smu.export_experiment(
+    report = export_experiment(
         source,
         destination,
         phase_root=case.root,
@@ -233,7 +234,7 @@ def test_output_inside_source_is_rejected(
         ValueError,
         match="outside the experiment",
     ):
-        smu.export_experiment(
+        export_experiment(
             source,
             destination,
             phase_root=case.root,
@@ -253,7 +254,7 @@ def test_existing_output_is_not_overwritten(
     sentinel.write_text("keep", encoding="utf-8")
 
     with pytest.raises(FileExistsError):
-        smu.export_experiment(
+        export_experiment(
             case.directory(),
             destination,
             phase_root=case.root,
@@ -279,7 +280,7 @@ def test_incomplete_experiment_is_rejected(
         ValueError,
         match="completed experiment",
     ):
-        smu.export_experiment(
+        export_experiment(
             source,
             destination,
             phase_root=case.root,
@@ -294,7 +295,7 @@ def test_invalid_experiment_creates_no_output(tmp_path):
     destination = tmp_path / "analysis"
 
     with pytest.raises((OSError, ValueError)):
-        smu.export_experiment(
+        export_experiment(
             source,
             destination,
         )
@@ -324,7 +325,7 @@ def test_export_failure_leaves_no_completion_marker(
         OSError,
         match="synthetic export failure",
     ):
-        smu.export_experiment(
+        export_experiment(
             completed_experiment.directory(),
             destination,
             phase_root=completed_experiment.root,
