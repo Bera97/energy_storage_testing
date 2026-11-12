@@ -1,80 +1,24 @@
 """Single public CLI. Importing this module does not connect to hardware."""
 
 import argparse
-import csv
 from datetime import datetime
 from importlib import import_module
 from pathlib import Path
 import sys
 
 from analysis.export_experiment import export_experiment
+from analysis.export_experiment import analyze_and_print
 
 
 
 def _analyze_single(directory, output_directory, *, phase_root=None):
     """Export and print single-run analysis without parsing arguments."""
-    try:
-        report = export_experiment(
-            directory,
-            output_directory,
-            phase_root=phase_root,
-        )
-    except (
-        OSError,
-        ValueError,
-        TypeError,
-        KeyError,
-        RuntimeError,
-        csv.Error,
-    ) as error:
-        print(
-            f"Analysis failed: {error}",
-            file=sys.stderr,
-        )
-        print(
-            "Any destination left behind is partial "
-            "unless ANALYSIS_COMPLETE exists.",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(
-        "Analysis: "
-        f"{Path(output_directory).resolve()}"
+    return analyze_and_print(
+        export_experiment,
+        directory,
+        output_directory,
+        phase_root=phase_root,
     )
-    print(
-        f"{'Phase':>5} "
-        f"{'Type':<14} "
-        f"{'Samples':>8} "
-        f"{'Span(s)':>10} "
-        f"{'Q(mAh)':>12} "
-        f"{'E(Wh)':>12}"
-    )
-
-    for row in report["phases"]:
-        print(
-            f"{row['phase_index']:>5} "
-            f"{row['type']:<14} "
-            f"{row['sample_count']:>8} "
-            f"{row['recorded_span_s']:>10.3f} "
-            f"{row['signed_charge_mah']:>12.6g} "
-            f"{row['signed_energy_wh']:>12.6g}"
-        )
-
-        for warning in row["warnings"]:
-            print(
-                f"WARNING phase {row['phase_index']}: "
-                f"{warning}",
-                file=sys.stderr,
-            )
-
-    for warning in report["warnings"]:
-        print(
-            f"WARNING: {warning}",
-            file=sys.stderr,
-        )
-
-    return 0
 
 
 def _unified_config_paths(documents, paths):

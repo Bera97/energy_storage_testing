@@ -7,6 +7,7 @@ import csv
 from importlib import import_module
 import json
 from pathlib import Path
+import sys
 
 
 METRICS = (
@@ -274,3 +275,64 @@ def export_experiment(
         handle.write("completed\n")
 
     return report
+def analyze_and_print(
+    exporter,
+    directory,
+    output_directory,
+    *,
+    dual=False,
+    **export_options,
+):
+    """Run an offline exporter and present its summary."""
+    try:
+        report = exporter(
+            directory,
+            output_directory,
+            **export_options,
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        RuntimeError,
+        csv.Error,
+    ) as error:
+        print(f"Analysis failed: {error}", file=sys.stderr)
+        print(
+            "Any destination left behind is partial "
+            "unless ANALYSIS_COMPLETE exists.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Analysis: {Path(output_directory).resolve()}")
+    header = (
+        f"{'Phase':>5} "
+        f"{'Type':<14} "
+        f"{'Samples':>8} "
+        f"{'Span(s)':>10} "
+        f"{'Q(mAh)':>12} "
+        f"{'E(Wh)':>12}"
+    )
+    print((f"{'CH':>2} " if dual else "") + header)
+    for row in report["phases"]:
+        values = (
+            f"{row['phase_index']:>5} "
+            f"{row['type']:<14} "
+            f"{row['sample_count']:>8} "
+            f"{row['recorded_span_s']:>10.3f} "
+            f"{row['signed_charge_mah']:>12.6g} "
+            f"{row['signed_energy_wh']:>12.6g}"
+        )
+        channel_prefix = f"{row['channel']:>2} " if dual else ""
+        print(channel_prefix + values)
+        warning_prefix = (
+            f"WARNING CH{row['channel']} phase {row['phase_index']}: "
+            if dual
+            else f"WARNING phase {row['phase_index']}: "
+        )
+        for warning in row["warnings"]:
+            print(warning_prefix + str(warning), file=sys.stderr)
+    for warning in report["warnings"]:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    return 0

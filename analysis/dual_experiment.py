@@ -14,13 +14,13 @@ import csv
 from importlib import import_module
 import json
 from pathlib import Path
-import sys
 
 from analysis.validate_preconditioning_experiment import _read_json
 import math
 from analysis.validate_recorded_run import validate_run
 from experiments.phase_outcome import validate_transport_outcome
 from analysis.export_experiment import CSV_FIELDS, METRICS
+from analysis.export_experiment import analyze_and_print
 
 
 DUAL_CSV_FIELDS = ("channel", *CSV_FIELDS)
@@ -365,70 +365,12 @@ def analyze_batch(directory, output_directory):
 
 def analyze_run(directory, output_directory):
     """Export and print dual-run analysis without parsing arguments."""
-    try:
-        report = analyze_batch(
-            directory,
-            output_directory,
-        )
-    except (
-        OSError,
-        ValueError,
-        TypeError,
-        KeyError,
-        RuntimeError,
-        csv.Error,
-    ) as error:
-        print(
-            f"Analysis failed: {error}",
-            file=sys.stderr,
-        )
-        print(
-            "Any destination left behind is partial "
-            "unless ANALYSIS_COMPLETE exists.",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(
-        "Analysis: "
-        f"{Path(output_directory).resolve()}"
+    return analyze_and_print(
+        analyze_batch,
+        directory,
+        output_directory,
+        dual=True,
     )
-    print(
-        f"{'CH':>2} "
-        f"{'Phase':>5} "
-        f"{'Type':<14} "
-        f"{'Samples':>8} "
-        f"{'Span(s)':>10} "
-        f"{'Q(mAh)':>12} "
-        f"{'E(Wh)':>12}"
-    )
-
-    for row in report["phases"]:
-        print(
-            f"{row['channel']:>2} "
-            f"{row['phase_index']:>5} "
-            f"{row['type']:<14} "
-            f"{row['sample_count']:>8} "
-            f"{row['recorded_span_s']:>10.3f} "
-            f"{row['signed_charge_mah']:>12.6g} "
-            f"{row['signed_energy_wh']:>12.6g}"
-        )
-
-        for warning in row["warnings"]:
-            print(
-                f"WARNING CH{row['channel']} "
-                f"phase {row['phase_index']}: "
-                f"{warning}",
-                file=sys.stderr,
-            )
-
-    for warning in report["warnings"]:
-        print(
-            f"WARNING: {warning}",
-            file=sys.stderr,
-        )
-
-    return 0
 
 
 def main(argv=None):
