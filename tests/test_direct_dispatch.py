@@ -8,9 +8,9 @@ import test_unified_cli as unified
 def forbid_backend_parser(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("Modern CLI invoked the single-channel backend parser.")
-    monkeypatch.setattr(single, "main", forbidden)
+    monkeypatch.setattr(single, "main", forbidden, raising=False)
     monkeypatch.setattr(dual, "main", forbidden)
-    monkeypatch.setattr(planner, "main", forbidden)
+    monkeypatch.setattr(planner, "main", forbidden, raising=False)
 def test_preview_dispatches_directly(tmp_path, capsys):
     unified.test_preview_single_channel(tmp_path, capsys)
 def test_execute_dispatches_directly(tmp_path, monkeypatch, capsys):

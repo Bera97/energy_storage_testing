@@ -114,7 +114,7 @@ def test_ceiling_check_rejects_insufficient_limit():
         require_ceilings(dict(maximum_voltage_v=4, maximum_current_a=1), dict(required_preflight_ceiling_v=5, required_preflight_ceiling_a=0.1))
 
 
-def test_single_cli_uses_yaml_without_prompt(pair, tmp_path, monkeypatch, capsys):
+def test_single_api_uses_yaml_without_prompt(pair, tmp_path, monkeypatch, capsys):
     docs, paths = save_profiles(pair, tmp_path)
     calls = []
     def fake(document, **kwargs):
@@ -122,7 +122,7 @@ def test_single_cli_uses_yaml_without_prompt(pair, tmp_path, monkeypatch, capsys
         return dict(completed_phase_count=4, shutdown_verified=True), tmp_path / "result"
     monkeypatch.setattr(single, "execute_live", fake)
     monkeypatch.setattr("builtins.input", lambda *args: pytest.fail("Unexpected confirmation prompt"))
-    assert single.main(["--config", str(paths[0]), "--execute"]) == 0
+    assert single.run_configured(config_path=str(paths[0]), execute=True) == 0
     assert len(calls) == 1
     assert calls[0][1]["confirm_specimen"] is None
     assert calls[0][1]["expected_serial"] == "TESTSERIAL"
@@ -157,7 +157,7 @@ def test_default_remains_preview(pair, tmp_path, monkeypatch, capsys, command):
     if command == "dual-run":
         args += ["--config", str(paths[1])]
     status = (
-        single.main(args[1:]) if command == "run"
+        single.run_configured(config_path=str(paths[0])) if command == "run"
         else dual.main(args)
     )
     assert status == 0
@@ -192,10 +192,11 @@ def test_single_yaml_path_preserves_real_entry_cleanup(monkeypatch):
         }
         case.fixture.save()
         monkeypatch.setattr("builtins.input", lambda *args: pytest.fail("Unexpected prompt"))
-        assert single.main([
-            "--config", str(case.fixture.path), "--execute",
-            "--experiment-id", "offline_live_test",
-        ]) == 0
+        assert single.run_configured(
+            config_path=str(case.fixture.path),
+            execute=True,
+            experiment_id="offline_live_test",
+        ) == 0
         assert case.manifest()["state"] == "completed"
         assert case.events == ["connect", "session_shutdown", "close"]
         case.executor_factory.assert_called_once()

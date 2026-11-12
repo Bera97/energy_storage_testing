@@ -1,5 +1,4 @@
 """Hardware-free dual-channel preconditioning planning. No live backend."""
-import argparse
 from copy import deepcopy
 import json
 import sys
@@ -76,24 +75,3 @@ def preview_configured(
         )
         return 1
     return 0
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(
-        prog="dual-planning backend",
-        description=(
-            "Validate two profiles without hardware access. "
-            "No live execution."
-        ),
-    )
-    parser.add_argument("--config", action="append", required=True)
-    parser.add_argument("--maximum-records", type=int, default=100000)
-    arguments = parser.parse_args(argv)
-    if len(arguments.config) != 2:
-        parser.error("Supply --config exactly twice.")
-    return preview_configured(
-        config_paths=arguments.config,
-        maximum_records=arguments.maximum_records,
-    )
-if __name__ == "__main__":
-    raise SystemExit(main())

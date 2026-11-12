@@ -1,9 +1,8 @@
-"""Supervised YAML-configured preconditioning; preview unless --execute.
-Legacy execution arguments remain compatible; no confirmation prompt.
+"""Supervised YAML-configured preconditioning APIs.
+The public command interface is provided by smu.
 No automatic retry, resume, or external-supply control.
 """
 
-import argparse
 import json
 from pathlib import Path
 import re
@@ -507,60 +506,3 @@ def run_configured(
             if isinstance(error, KeyboardInterrupt)
             else 1
         )
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(
-        description=(
-            "Preview or explicitly execute a recorded "
-            "preconditioning experiment."
-        ),
-        epilog=(
-            "Supplied DUT ratings and operator ceilings are not "
-            "independent verification of the operating envelope, "
-            "wiring, datasheet limits, or physical protection."
-        ),
-    )
-    parser.add_argument("--config", required=True)
-
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true")
-    mode.add_argument("--execute", action="store_true")
-
-    parser.add_argument("--experiment-id")
-    parser.add_argument("--confirm-specimen", help=argparse.SUPPRESS)
-    parser.add_argument("--expected-serial")
-    parser.add_argument("--max-voltage-v", type=float)
-    parser.add_argument("--max-current-a", type=float)
-    parser.add_argument(
-        "--maximum-records",
-        type=int,
-        default=100000,
-    )
-    parser.add_argument(
-        "--timeout-ms",
-        type=int,
-        default=5000,
-    )
-    parser.add_argument("--visa-library", default=None)
-
-    arguments = parser.parse_args(argv)
-
-
-    return run_configured(
-        config_path=arguments.config,
-        execute=arguments.execute,
-        experiment_id=arguments.experiment_id,
-        confirm_specimen=arguments.confirm_specimen,
-        expected_serial=arguments.expected_serial,
-        maximum_voltage_v=arguments.max_voltage_v,
-        maximum_current_a=arguments.max_current_a,
-        maximum_records=arguments.maximum_records,
-        timeout_ms=arguments.timeout_ms,
-        visa_library=arguments.visa_library,
-        usage_error=parser.error,
-    )
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -5,7 +5,10 @@ from unittest.mock import patch
 import pytest
 import yaml
 import smu
-from experiments.dual_preconditioning import build_dual_plan, main
+from experiments.dual_preconditioning import (
+    build_dual_plan,
+    preview_configured,
+)
 import test_experiment_config as config_tests
 @pytest.fixture
 def pair():
@@ -102,15 +105,30 @@ def test_public_cli_reads_both_profiles(pair, tmp_path, capsys):
     result = json.loads(capsys.readouterr().out)
     assert result["channel_count"] == 2
     assert result["live_backend_available"] is False
-def test_execution_argument_is_rejected(capsys):
-    with pytest.raises(SystemExit) as caught:
-        main([
-            "--config", "unused1.yaml",
-            "--config", "unused2.yaml",
-            "--execute",
-        ])
-    assert caught.value.code == 2
-def test_single_config_cli_rejected(capsys):
-    with pytest.raises(SystemExit) as caught:
-        main(["--config", "unused.yaml"])
-    assert caught.value.code == 2
+def test_preview_api_reports_invalid_profile_without_hardware(pair, capsys):
+    pair[1]["charge"]["target_voltage_v"] = 99
+    with patch(
+        "experiments.run_live._new_smu",
+        side_effect=AssertionError("Hardware construction attempted"),
+    ) as factory:
+        code = preview_configured(pair)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert "Dual-channel planning failed" in captured.err
+    factory.assert_not_called()
+def test_preview_api_reports_single_config_without_hardware(
+    pair, tmp_path, capsys
+):
+    path = tmp_path / "single.yaml"
+    path.write_text(yaml.safe_dump(pair[0]), encoding="utf-8")
+    with patch(
+        "experiments.run_live._new_smu",
+        side_effect=AssertionError("Hardware construction attempted"),
+    ) as factory:
+        code = preview_configured(config_paths=[str(path)])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert "Exactly two" in captured.err
+    factory.assert_not_called()

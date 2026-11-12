@@ -1,4 +1,4 @@
-"""Offline tests for the explicit live experiment entry point."""
+"""Offline tests for the supervised experiment execution API."""
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
@@ -9,7 +9,7 @@ from unittest.mock import patch
 import test_preconditioning_plan as plan_tests
 import test_preconditioning_runner as runner_tests
 
-from experiments.run_live import main
+from experiments.run_live import run_configured
 
 
 class FakeSMU:
@@ -104,34 +104,34 @@ class LiveExperimentEntryTests(unittest.TestCase):
         self.addCleanup(backend_patcher.stop)
 
     def invoke(self, *, live=False, extra=()):
-        arguments = [
-            "--config",
-            str(self.fixture.path),
-        ]
-
+        options = {
+            "config_path": str(self.fixture.path),
+            "execute": live,
+        }
         if live:
-            arguments += [
-                "--execute",
-                "--experiment-id",
-                "offline_live_test",
-                "--confirm-specimen",
-                "TEST-001",
-                "--expected-serial",
-                "TESTSERIAL",
-                "--max-voltage-v",
-                "4.2",
-                "--max-current-a",
-                "2.0",
-            ]
-
-        arguments += list(extra)
-
+            options.update(
+                experiment_id="offline_live_test",
+                confirm_specimen="TEST-001",
+                expected_serial="TESTSERIAL",
+                maximum_voltage_v=4.2,
+                maximum_current_a=2.0,
+            )
+        overrides = {
+            "--confirm-specimen": ("confirm_specimen", str),
+            "--max-current-a": ("maximum_current_a", float),
+        }
+        if len(extra) % 2:
+            raise AssertionError("Expected option/value pairs.")
+        for index in range(0, len(extra), 2):
+            option, value = extra[index:index + 2]
+            if option not in overrides:
+                raise AssertionError(f"Unexpected test option: {option}")
+            key, convert = overrides[option]
+            options[key] = convert(value)
         output = io.StringIO()
         errors = io.StringIO()
-
         with redirect_stdout(output), redirect_stderr(errors):
-            code = main(arguments)
-
+            code = run_configured(**options)
         return code, output.getvalue(), errors.getvalue()
 
     def manifest(self):
@@ -291,17 +291,16 @@ class LiveExperimentEntryTests(unittest.TestCase):
         )
         self.executor_factory.assert_not_called()
 
-    def test_execute_requires_explicit_arguments(self):
+    def test_execute_requires_required_settings(self):
         with redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:
-                main([
-                    "--config",
-                    str(self.fixture.path),
-                    "--execute",
-                ])
-
+                run_configured(
+                    config_path=str(self.fixture.path),
+                    execute=True,
+                )
         self.assertEqual(caught.exception.code, 2)
         self.factory.assert_not_called()
+        self.assertFalse(self.directory.exists())
 
 
 if __name__ == "__main__":
