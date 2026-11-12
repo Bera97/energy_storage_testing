@@ -227,17 +227,12 @@ def _unified_main(arguments):
 
 
             if len(documents) == 2:
-                forwarded = [
-                    "dual-run",
-                    "--config", paths[0],
-                    "--config", paths[1],
-                    "--execute",
-                    "--batch-id", run_name,
-                ]
 
-                status = import_module(
-                    "experiments.dual_live"
-                ).main(forwarded)
+
+                status = import_module("experiments.dual_live").run_configured(
+                    documents, execute_requested=True,
+                    batch_id=run_name,
+                )
             else:
 
 
