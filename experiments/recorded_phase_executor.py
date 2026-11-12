@@ -21,8 +21,8 @@ import re
 import time
 
 from acquisition.buffered_acquisition import BufferedAcquisition
-from acquisition.charge_trace_transport import ChargeTraceTransport
-from acquisition.discharge_trace_transport import (
+from acquisition.phase_trace_transport import ChargeTraceTransport
+from acquisition.phase_trace_transport import (
     DischargeTraceTransport,
 )
 from drivers.shutdown_reporting import attempt_shutdown_with_report

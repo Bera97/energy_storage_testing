@@ -40,7 +40,7 @@ from experiments.config import validate_config
 from copy import deepcopy
 from dataclasses import dataclass
 from acquisition.buffered_acquisition import BufferedAcquisition
-from acquisition.charge_trace_transport import ChargeTraceTransport
+from acquisition.phase_trace_transport import ChargeTraceTransport
 from acquisition.monitored_acquisition import MonitoredAcquisition
 from drivers.trace_timebase import configure_trace_timebase
 from experiments.acquisition_budget import build_acquisition_plan

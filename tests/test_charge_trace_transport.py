@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import unittest
 
-from acquisition.charge_trace_transport import ChargeTraceTransport
+from acquisition.phase_trace_transport import ChargeTraceTransport
 
 
 @dataclass(frozen=True)

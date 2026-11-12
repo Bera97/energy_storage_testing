@@ -8,8 +8,8 @@ from test_charge_trace_transport import (
     FakeWriter,
 )
 
-from acquisition.charge_trace_transport import ChargeTraceTransport
-from acquisition.discharge_trace_transport import (
+from acquisition.phase_trace_transport import ChargeTraceTransport
+from acquisition.phase_trace_transport import (
     DischargeTraceTransport,
 )
 
