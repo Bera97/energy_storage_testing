@@ -38,3 +38,21 @@ def test_failed_dual_execution_skips_analysis(tmp_path, monkeypatch, capsys):
     assert "analysis skipped" in captured.err
 def test_dual_preview_dispatches_directly(tmp_path, capsys):
     unified.test_preview_dual_channel(tmp_path, capsys)
+def test_dual_analysis_import_does_not_load_live_backend():
+    from pathlib import Path
+    import subprocess
+    import sys
+    code = (
+        "import sys; "
+        "import analysis.dual_experiment; "
+        "assert 'experiments.dual_live' not in sys.modules; "
+        "assert 'drivers.keysight_b2902b' not in sys.modules; "
+        "assert 'pyvisa' not in sys.modules"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

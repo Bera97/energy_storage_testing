@@ -2,21 +2,18 @@
 import argparse
 from copy import deepcopy
 import json
-import math
 from pathlib import Path
 import re
 import sys
 import time
 from experiments.settings import settings_for, require_ceilings, new_id
 from uuid import uuid4
-from analysis.validate_preconditioning_experiment import _read_json
-from analysis.validate_recorded_run import validate_run
 from experiments.config import load_config
 from experiments.dual_coordinator import _run_backend
 from experiments.dual_instrument_io import DualInstrumentSession
 from experiments.dual_phase import DualPhase
 from experiments.dual_preconditioning import build_dual_plan
-from experiments.phase_outcome import validate_transport_outcome
+from analysis.dual_experiment import check_batch
 def require(condition, message):
     if not condition:
         raise ValueError(message)
@@ -233,177 +230,6 @@ class RealBackend:
         self.session.close()
         self.close_returned = True
         self.events.append({"action": "close"})
-def check_batch(directory, *, require_marker=True):
-    root = Path(directory).resolve()
-    result = {
-        "valid": False,
-        "phase_recordings_checked": 0,
-        "errors": [],
-        "warnings": [],
-    }
-    try:
-        doc = _read_json(root / "dual_experiment.json")
-        require(
-            doc["dual_manifest_schema_version"] == 1,
-            "Unsupported dual manifest.",
-        )
-        require(
-            doc["state"] == "completed",
-            "Dual experiment is not completed.",
-        )
-        if require_marker:
-            require(
-                (root / "DUAL_COMPLETE").is_file(),
-                "Missing DUAL_COMPLETE.",
-            )
-        plan = doc["plan"]
-        rebuilt = build_dual_plan(
-            [
-                preview["acquisition_plan"]["configuration"]
-                for preview in plan["channels"]
-            ],
-            maximum_records=plan["channels"][0][
-                "acquisition_plan"
-            ]["acquisition_planning_limit"],
-        )
-        require(plan == rebuilt, "Stored plan does not validate.")
-        report = doc["report"]
-        require(
-            report["state"] == "completed"
-            and report["simulation_only"] is False
-            and report["hardware_execution_enabled"] is True
-            and report.get("error") is None,
-            "Report does not establish real-backend completion.",
-        )
-        require(
-            report["startup_stop_verified"] is True
-            and report["final_stop_verified"] is True,
-            "Global shutdown evidence is incomplete.",
-        )
-        require(
-            report["session_close_returned"] is True
-            and not report["cleanup_errors"],
-            "Cleanup did not complete.",
-        )
-        identity = doc["identity"].split(",")
-        require(
-            len(identity) == 4
-            and identity[1].strip().upper() == "B2902B"
-            and identity[2].strip() == doc["expected_serial"],
-            "Instrument identity mismatch.",
-        )
-        require(
-            len(report["channels"]) == 2,
-            "Expected two channel reports.",
-        )
-        seen = set()
-        for preview, channel in zip(
-            plan["channels"], report["channels"]
-        ):
-            require(
-                channel["channel"] == preview["channel"]
-                and channel["specimen_id"] == preview["specimen_id"]
-                and channel["state"] == "completed",
-                "Channel report mismatch.",
-            )
-            phases = preview["acquisition_plan"]["phases"]
-            require(
-                len(phases) == len(channel["outcomes"]),
-                "Incomplete phase outcomes.",
-            )
-            previous = None
-            for phase, outcome in zip(
-                phases, channel["outcomes"]
-            ):
-                require(
-                    all(
-                        outcome[key] == phase[key]
-                        for key in ("phase_index", "cycle", "type")
-                    ),
-                    "Phase identity mismatch.",
-                )
-                require(
-                    outcome["state"] == "completed"
-                    and outcome["stop_verified"] is True,
-                    "Phase stop not verified.",
-                )
-                start = outcome["started_s"]
-                finish = outcome["finished_s"]
-                require(
-                    all(
-                        type(value) in (int, float)
-                        and math.isfinite(value)
-                        for value in (start, finish)
-                    )
-                    and finish >= start
-                    and (previous is None or start >= previous),
-                    "Invalid phase timing.",
-                )
-                previous = finish
-                if phase["type"] == "rest":
-                    require(
-                        outcome["stop_reason"] == "rest_elapsed"
-                        and finish - start + 1e-9
-                        >= phase["duration_s"],
-                        "Invalid rest evidence.",
-                    )
-                    continue
-                reference = Path(outcome["run_directory"])
-                require(
-                    reference.is_absolute(),
-                    "Recording reference must be absolute.",
-                )
-                reference = reference.resolve(strict=True)
-                require(
-                    reference.is_relative_to(root)
-                    and reference != root
-                    and reference not in seen,
-                    "Invalid or duplicate recording path.",
-                )
-                seen.add(reference)
-                validation = validate_run(reference)
-                require(
-                    validation["valid"]
-                    and validation["state"] == "returned",
-                    "Invalid phase recording: "
-                    + str(validation["errors"]),
-                )
-                require(
-                    validation.get("fault_flagged_rows", 0) == 0,
-                    "Recording contains measurement faults.",
-                )
-                metadata = _read_json(
-                    reference / "metadata.json"
-                )
-                require(
-                    metadata["metadata"]["channel"]
-                    == channel["channel"]
-                    and metadata["experiment_phase"] == phase,
-                    "Recorded phase differs from plan.",
-                )
-                transport = metadata["phase_transport_report"]
-                validate_transport_outcome(phase, transport)
-                require(
-                    transport["retained_count"]
-                    == validation["rows_read"]
-                    and outcome["stop_reason"]
-                    == transport["stop_reason"],
-                    "Recording count or endpoint mismatch.",
-                )
-                result["phase_recordings_checked"] += 1
-                result["warnings"].extend(
-                    f"CH{channel['channel']} "
-                    f"phase {phase['phase_index']}: {warning}"
-                    for warning in validation["warnings"]
-                )
-        result["valid"] = True
-    except (
-        OSError, ValueError, TypeError, KeyError, RuntimeError
-    ) as error:
-        result["errors"].append(
-            f"{type(error).__name__}: {error}"
-        )
-    return result
 def execute(
     plan,
     directory,

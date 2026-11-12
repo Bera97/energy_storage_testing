@@ -6,7 +6,8 @@ import yaml
 import smu
 from experiments.dual_coordinator import VirtualClock
 from experiments.dual_instrument_io import DualInstrumentSession
-from experiments.dual_live import check_batch, execute
+from analysis.dual_experiment import check_batch
+from experiments.dual_live import execute
 from experiments.dual_phase import DualPhase
 from experiments.dual_preconditioning import build_dual_plan
 import experiments.dual_instrument_io as io
