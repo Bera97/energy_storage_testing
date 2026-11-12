@@ -93,7 +93,7 @@ def test_no_recording_directories_created(pair, tmp_path):
     build_dual_plan(pair)
     assert not output.exists()
 def test_public_cli_reads_both_profiles(pair, tmp_path, capsys):
-    arguments = ["dual-plan"]
+    arguments = ["--preview"]
     for index, document in enumerate(pair):
         path = tmp_path / f"channel_{index + 1}.yaml"
         path.write_text(yaml.safe_dump(document), encoding="utf-8")

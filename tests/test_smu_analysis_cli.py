@@ -33,8 +33,8 @@ def test_analyze_cli_success_matches_exported_table(
     completed_case, tmp_path, capsys
 ):
     destination = tmp_path / "analysis"
-    result = smu.main([
-        "analyze", str(completed_case.directory()), str(destination),
+    result = smu._analyze_main([
+        str(completed_case.directory()), str(destination),
         "--phase-root", str(completed_case.root),
     ])
     assert result == 0

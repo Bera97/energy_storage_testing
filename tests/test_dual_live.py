@@ -148,7 +148,7 @@ def test_public_preview_does_not_construct_instrument(
     def forbidden(*args, **kwargs):
         pytest.fail("Preview attempted instrument construction.")
     monkeypatch.setattr(io, "_new_smu", forbidden)
-    arguments = ["dual-run"]
+    arguments = ["--preview"]
     for index, document in enumerate(pair):
         path = tmp_path / f"channel_{index}.yaml"
         path.write_text(

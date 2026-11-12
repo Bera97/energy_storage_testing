@@ -206,6 +206,12 @@ def test_missing_config_is_usage_error():
     assert cli("--preview").returncode == 2
 
 
-def test_legacy_commands_still_work(recorded, tmp_path):
-    assert cli("plan", "--config", recorded["single"]).returncode == 0
-    assert cli("--help").returncode == 0
+def test_legacy_command_is_rejected_and_help_still_works(recorded):
+    result = cli("plan", "--config", recorded["single"])
+    assert result.returncode == 2
+    assert "unrecognized arguments: plan" in result.stderr
+    help_result = cli("--help")
+    assert help_result.returncode == 0, help_result.stderr
+    assert "--preview" in help_result.stdout
+    assert "--execute" in help_result.stdout
+    assert "--analyze" in help_result.stdout

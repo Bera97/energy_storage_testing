@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from types import SimpleNamespace
 
 import pytest
 
@@ -87,81 +86,46 @@ def test_import_does_not_import_instrument_driver():
 
 
 @pytest.mark.parametrize(
-    "command,module_name,prefix",
+    "command",
     [
-        (
-            "plan",
-            "experiments.run_live",
-            ["--dry-run"],
-        ),
-        (
-            "run",
-            "experiments.run_live",
-            [],
-        ),
-        (
-            "check",
-            "analysis.check_preconditioning_experiment",
-            [],
-        ),
-        (
-            "analyze-phase",
-            "analysis.export_recorded_analysis",
-            [],
-        ),
+        "plan",
+        "run",
+        "check",
+        "analyze",
+        "analyze-phase",
+        "dual-plan",
+        "dual-run",
+        "dual-check",
+        "dual-probe",
+        "dual-simulate",
     ],
 )
-def test_routes_preserve_arguments_and_exit_code(
-    monkeypatch,
-    command,
-    module_name,
-    prefix,
+def test_legacy_commands_are_rejected_before_backend_import(
+    monkeypatch, command
 ):
-    calls = []
-
-    def fake_import(name):
-        assert name == module_name
-
-        def fake_main(argv):
-            calls.append(argv)
-            return 3
-
-        return SimpleNamespace(main=fake_main)
-
-    monkeypatch.setattr(
-        smu,
-        "import_module",
-        fake_import,
-    )
-
-    original = ["example", "--json"]
-    arguments = [command, *original]
-
-    assert smu.main(arguments) == 3
-    assert calls == [[*prefix, *original]]
-    assert arguments == [command, *original]
+    def forbidden_import(name):
+        pytest.fail(
+            f"Legacy command attempted backend import: {name}"
+        )
+    monkeypatch.setattr(smu, "import_module", forbidden_import)
+    with pytest.raises(SystemExit) as caught:
+        smu.main([command])
+    assert caught.value.code == 2
 
 
 def test_plan_cannot_execute(monkeypatch):
-    from experiments import run_live
-
-    def forbidden_connection(*args, **kwargs):
-        pytest.fail("Planning attempted instrument construction.")
-
-    monkeypatch.setattr(
-        run_live,
-        "_new_smu",
-        forbidden_connection,
-    )
-
+    def forbidden_import(name):
+        pytest.fail(
+            f"Conflicting flags attempted backend import: {name}"
+        )
+    monkeypatch.setattr(smu, "import_module", forbidden_import)
     with pytest.raises(SystemExit) as caught:
         smu.main([
-            "plan",
             "--config",
             "unused.yaml",
+            "--preview",
             "--execute",
         ])
-
     assert caught.value.code == 2
 
 
@@ -338,8 +302,7 @@ def test_export_failure_leaves_no_completion_marker(
 def test_analyze_cli_reports_failure(tmp_path, capsys):
     destination = tmp_path / "analysis"
 
-    result = smu.main([
-        "analyze",
+    result = smu._analyze_main([
         str(tmp_path / "missing"),
         str(destination),
     ])

@@ -2,7 +2,7 @@
 from copy import deepcopy
 import pytest
 import yaml
-import smu
+from experiments.dual_coordinator import main as simulate_main
 import test_dual_preconditioning as planning_tests
 from experiments.dual_preconditioning import build_dual_plan
 from experiments.dual_coordinator import (
@@ -189,19 +189,19 @@ def test_non_simulator_backend_is_rejected(plan):
     clock = VirtualClock()
     with pytest.raises(TypeError, match="no live backend"):
         execute(plan, clock, object())
-def test_public_cli_success(pair, tmp_path, capsys):
+def test_backend_cli_success(pair, tmp_path, capsys):
     arguments = ["dual-simulate", "--phase-duration-s", "0.1"]
     for index, document in enumerate(pair):
         path = tmp_path / f"profile_{index}.yaml"
         path.write_text(yaml.safe_dump(document), encoding="utf-8")
         arguments += ["--config", str(path)]
-    assert smu.main(arguments) == 0
+    assert simulate_main(arguments[1:]) == 0
     assert '"simulation_only": true' in capsys.readouterr().out
-def test_public_cli_fault_returns_failure(pair, tmp_path, capsys):
+def test_backend_cli_fault_returns_failure(pair, tmp_path, capsys):
     arguments = ["dual-simulate", "--fail-channel", "2"]
     for index, document in enumerate(pair):
         path = tmp_path / f"profile_{index}.yaml"
         path.write_text(yaml.safe_dump(document), encoding="utf-8")
         arguments += ["--config", str(path)]
-    assert smu.main(arguments) == 1
+    assert simulate_main(arguments[1:]) == 1
     assert '"state": "raised"' in capsys.readouterr().err

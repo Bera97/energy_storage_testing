@@ -358,11 +358,12 @@ def test_unified_help_lists_three_flags(capsys):
     assert "--analyze" in output
 
 
-def test_legacy_commands_still_dispatch(tmp_path, capsys):
+def test_legacy_commands_are_rejected(tmp_path, capsys):
     path = save(make_document(root=tmp_path), tmp_path / "profile.yaml")
-
-    assert smu.main(["plan", "--config", path]) == 0
-    assert json.loads(capsys.readouterr().out)["will_connect"] is False
+    with pytest.raises(SystemExit) as caught:
+        smu.main(["plan", "--config", path])
+    assert caught.value.code == 2
+    assert "usage:" in capsys.readouterr().err
 
 
 def test_execute_then_analyze_end_to_end(tmp_path, monkeypatch, capsys):

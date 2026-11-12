@@ -10,17 +10,6 @@ import sys
 from analysis.export_experiment import export_experiment
 
 
-ROUTES = {
-    "plan": "experiments.run_live",
-    "dual-run": "experiments.dual_live",
-    "dual-check": "experiments.dual_live",
-    "dual-probe": "experiments.dual_instrument_io",
-    "dual-plan": "experiments.dual_preconditioning",
-    "dual-simulate": "experiments.dual_coordinator",
-    "run": "experiments.run_live",
-    "check": "analysis.check_preconditioning_experiment",
-    "analyze-phase": "analysis.export_recorded_analysis",
-}
 
 def _analyze_main(argv):
     parser = argparse.ArgumentParser(
@@ -318,61 +307,24 @@ def _unified_main(arguments):
 
 
 def main(argv=None):
+    """Run the public preview/execute/analyze flag interface."""
     arguments = list(
         sys.argv[1:] if argv is None else argv
     )
-
-    parser = argparse.ArgumentParser(
-        prog="python -m smu",
-        description=(
-            "Plan, run, validate, and analyze "
-            "energy-storage experiments."
-        ),
-        epilog=(
-            "Without a command word, the flag interface applies: "
-            "--config PROFILE [--preview | --execute [--analyze] | "
-            "--analyze RUN_NAME]. Legacy subcommands remain "
-            "available; run still requires --execute for hardware "
-            "execution."
-        ),
-    )
-
-    parser.add_argument(
-        "command",
-        choices=(*ROUTES, "analyze"),
-    )
-
     if not arguments:
-        parser.print_help(file=sys.stderr)
+        print(
+            "usage: python -m smu --config PROFILE "
+            "[--preview | --execute [--analyze] | "
+            "--analyze RUN_NAME]",
+            file=sys.stderr,
+        )
         return 2
-
-    if arguments[0] in ("-h", "--help"):
-        parser.print_help()
-        return 0
-
-    if not arguments[0].startswith("-"):
-        command = parser.parse_args(
-            arguments[:1]
-        ).command
-        forwarded = arguments[1:]
-
-        if command in ("dual-run", "dual-check"):
-            return import_module("experiments.dual_live").main([command, *forwarded])
-
-        if command == "analyze":
-            return _analyze_main(forwarded)
-
-        if command == "plan":
-            forwarded = [
-                "--dry-run",
-                *forwarded,
-            ]
-
-        return import_module(
-            ROUTES[command]
-        ).main(forwarded)
-
-    return _unified_main(arguments)
+    try:
+        return _unified_main(arguments)
+    except SystemExit as error:
+        if error.code == 0:
+            return 0
+        raise
 
 
 if __name__ == "__main__":

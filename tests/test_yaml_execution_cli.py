@@ -6,7 +6,6 @@ import re
 
 import pytest
 import yaml
-import smu
 from experiments.config import validate_config
 from experiments.execution_settings import (
     new_id, require_ceilings, resolve_single, settings_for, validate_execution,
@@ -109,7 +108,7 @@ def test_single_cli_uses_yaml_without_prompt(pair, tmp_path, monkeypatch, capsys
         return dict(completed_phase_count=4, shutdown_verified=True), tmp_path / "result"
     monkeypatch.setattr(single, "execute_live", fake)
     monkeypatch.setattr("builtins.input", lambda *args: pytest.fail("Unexpected confirmation prompt"))
-    assert smu.main(["run", "--config", str(paths[0]), "--execute"]) == 0
+    assert single.main(["--config", str(paths[0]), "--execute"]) == 0
     assert len(calls) == 1
     assert calls[0][1]["confirm_specimen"] is None
     assert calls[0][1]["expected_serial"] == "TESTSERIAL"
@@ -126,7 +125,7 @@ def test_dual_cli_uses_yaml_without_qualification_or_prompt(pair, tmp_path, monk
     monkeypatch.setattr(dual, "execute", fake)
     monkeypatch.setattr("builtins.input", lambda *args: pytest.fail("Unexpected confirmation prompt"))
     args = ["dual-run", "--config", str(paths[0]), "--config", str(paths[1])]
-    assert smu.main(args + ["--execute"]) == 0
+    assert dual.main(args + ["--execute"]) == 0
     assert len(calls) == 1
     assert calls[0][2] == "TESTSERIAL"
     assert calls[0][1].name.startswith("dual_")
@@ -143,7 +142,11 @@ def test_default_remains_preview(pair, tmp_path, monkeypatch, capsys, command):
     args = [command, "--config", str(paths[0])]
     if command == "dual-run":
         args += ["--config", str(paths[1])]
-    assert smu.main(args) == 0
+    status = (
+        single.main(args[1:]) if command == "run"
+        else dual.main(args)
+    )
+    assert status == 0
     assert json.loads(capsys.readouterr().out)["will_connect"] is False
 
 
@@ -152,12 +155,12 @@ def test_dual_serial_disagreement_prevents_execution(pair, tmp_path, monkeypatch
     docs[1]["execution"]["expected_serial"] = "OTHER"
     paths[1].write_text(yaml.safe_dump(docs[1]), encoding="utf-8")
     monkeypatch.setattr(dual, "execute", lambda *args: pytest.fail("Should not execute"))
-    assert smu.main(["dual-run", "--config", str(paths[0]), "--config", str(paths[1]), "--execute"]) == 1
+    assert dual.main(["dual-run", "--config", str(paths[0]), "--config", str(paths[1]), "--execute"]) == 1
 
 
 def test_removed_qualification_option_is_rejected():
     with pytest.raises(SystemExit) as caught:
-        smu.main(["dual-run", "--config", "unused1", "--config", "unused2", "--qualification-run"])
+        dual.main(["dual-run", "--config", "unused1", "--config", "unused2", "--qualification-run"])
     assert caught.value.code == 2
 
 
