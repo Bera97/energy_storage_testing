@@ -174,8 +174,12 @@ Retained standalone developer tools include:
   changes configuration while verifying outputs OFF; review its prerequisites.
 
 Use `--help` on these standalone modules to inspect their arguments.
-They are not `python -m smu` subcommands. Other retained backend parsers and
-offline validation/analysis interfaces have not been retired by this cleanup.
+They are not `python -m smu` subcommands.
+The legacy dual-execution parser has also been retired; use the public
+`smu` interface or `experiments.dual_live.run_configured()` for execution.
+The internal `experiments.dual_live.main(["dual-check", DIRECTORY])`
+interface remains available for read-only batch validation.
+Other offline validation and analysis interfaces remain unchanged.
 Offline simulation exercises virtual scheduling and synthetic endpoints.
 It does not qualify electrochemistry, live timing, physical shutdown,
 or recording durability.

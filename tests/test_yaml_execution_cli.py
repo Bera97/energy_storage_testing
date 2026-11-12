@@ -5,6 +5,7 @@ import re
 
 import pytest
 import yaml
+import smu
 from experiments.config import validate_config
 from experiments.settings import new_id, require_ceilings, settings_for, validate_execution
 import experiments.dual_live as dual
@@ -130,7 +131,7 @@ def test_single_api_uses_yaml_without_prompt(pair, tmp_path, monkeypatch, capsys
     assert json.loads(capsys.readouterr().out)["state"] == "completed"
 
 
-def test_dual_cli_uses_yaml_without_qualification_or_prompt(pair, tmp_path, monkeypatch, capsys):
+def test_dual_api_uses_yaml_without_qualification_or_prompt(pair, tmp_path, monkeypatch, capsys):
     _, paths = save_profiles(pair, tmp_path)
     calls = []
     def fake(plan, directory, serial):
@@ -138,8 +139,10 @@ def test_dual_cli_uses_yaml_without_qualification_or_prompt(pair, tmp_path, monk
         return dict(state="completed", final_stop_verified=True, session_close_returned=True)
     monkeypatch.setattr(dual, "execute", fake)
     monkeypatch.setattr("builtins.input", lambda *args: pytest.fail("Unexpected confirmation prompt"))
-    args = ["dual-run", "--config", str(paths[0]), "--config", str(paths[1])]
-    assert dual.main(args + ["--execute"]) == 0
+    assert dual.run_configured(
+        config_paths=[str(path) for path in paths],
+        execute_requested=True,
+    ) == 0
     assert len(calls) == 1
     assert calls[0][2] == "TESTSERIAL"
     assert calls[0][1].name.startswith("dual_")
@@ -153,12 +156,9 @@ def test_default_remains_preview(pair, tmp_path, monkeypatch, capsys, command):
         pytest.fail("Preview invoked execution")
     monkeypatch.setattr(single, "execute_live", forbidden)
     monkeypatch.setattr(dual, "execute", forbidden)
-    args = [command, "--config", str(paths[0])]
-    if command == "dual-run":
-        args += ["--config", str(paths[1])]
     status = (
         single.run_configured(config_path=str(paths[0])) if command == "run"
-        else dual.main(args)
+        else dual.run_configured(config_paths=[str(path) for path in paths])
     )
     assert status == 0
     assert json.loads(capsys.readouterr().out)["will_connect"] is False
@@ -169,12 +169,19 @@ def test_dual_serial_disagreement_prevents_execution(pair, tmp_path, monkeypatch
     docs[1]["execution"]["expected_serial"] = "OTHER"
     paths[1].write_text(yaml.safe_dump(docs[1]), encoding="utf-8")
     monkeypatch.setattr(dual, "execute", lambda *args: pytest.fail("Should not execute"))
-    assert dual.main(["dual-run", "--config", str(paths[0]), "--config", str(paths[1]), "--execute"]) == 1
+    assert dual.run_configured(
+        config_paths=[str(path) for path in paths],
+        execute_requested=True,
+    ) == 1
 
 
 def test_removed_qualification_option_is_rejected():
     with pytest.raises(SystemExit) as caught:
-        dual.main(["dual-run", "--config", "unused1", "--config", "unused2", "--qualification-run"])
+        smu.main([
+            "--config", "unused1",
+            "--config", "unused2",
+            "--execute", "--qualification-run",
+        ])
     assert caught.value.code == 2
 
 
