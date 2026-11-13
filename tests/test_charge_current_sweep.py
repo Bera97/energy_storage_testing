@@ -142,7 +142,7 @@ def test_multiple_profiles_are_rejected(profile, tmp_path, capsys):
     assert smu.main([
         "--config", str(path), "--config", str(path), "--preview",
     ]) == 1
-    assert "exactly one profile" in capsys.readouterr().err
+    assert "channel" in capsys.readouterr().err.lower()
 def test_normal_preconditioning_still_validates(profile):
     del profile["sweep"]
     profile["experiment"]["type"] = "preconditioning"

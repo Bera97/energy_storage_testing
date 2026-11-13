@@ -150,6 +150,13 @@ def _run_backend(plan, backend, *, clock, sleep, poll_interval_s=0.05, simulatio
                 state = states[channel]
                 if state['state'] == 'completed':
                     continue
+                if (
+                    verified.get("initial_preparation_barrier") is True
+                    and state["state"] == "pending"
+                    and state["next_index"] == 2
+                    and any(peer["next_index"] < 2 for peer in states.values())
+                ):
+                    continue
                 timestamp = now()
                 if state['state'] == 'pending':
                     phase = deepcopy(state['phases'][state['next_index']])

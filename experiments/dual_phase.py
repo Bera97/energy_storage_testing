@@ -69,6 +69,18 @@ class DualPhase:
         self.config = deepcopy(
             preview["acquisition_plan"]["configuration"]
         )
+        if session.plan.get("experiment_type") == "dual_charge_current_sweep":
+            conditions = preview["sweep_plan"]["conditions"]
+            stage_id = self.phase["sweep_stage_id"]
+            condition = (
+                conditions[0]
+                if stage_id == "initial_discharge"
+                else next(
+                    item for item in conditions
+                    if item["condition_id"] == stage_id
+                )
+            )
+            self.config = deepcopy(condition["config"])
         self.directory = directory
         self.run_id = run_id
         self.clock = clock

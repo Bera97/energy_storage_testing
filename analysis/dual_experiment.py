@@ -235,7 +235,8 @@ def analyze_batch(directory, output_directory):
         )
 
     document = _read_json(source / "dual_experiment.json")
-
+    if document["plan"].get("experiment_type") == "dual_charge_current_sweep":
+        return export_dual_sweep(source, destination)
     destination.mkdir(parents=True)
 
     exporter = import_module(
@@ -401,3 +402,177 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+def export_dual_sweep(directory, output_directory):
+    """Validate and export both sweep channels without pooling specimens."""
+    from analysis.export_experiment import (
+        SWEEP_CYCLE_FIELDS,
+        _sweep_cycle_rows,
+        _sweep_group_rows,
+        _write_json,
+        _write_sweep_csv,
+    )
+    source = Path(directory).resolve(strict=True)
+    destination = Path(output_directory).resolve()
+    _require_batch(
+        destination != source
+        and not destination.is_relative_to(source)
+        and not source.is_relative_to(destination),
+        "Analysis must be outside the source tree and not its ancestor.",
+    )
+    if destination.exists():
+        raise FileExistsError(f"Output directory already exists: {destination}")
+    document = _read_json(source / "dual_experiment.json")
+    _require_batch(
+        document["plan"].get("experiment_type") == "dual_charge_current_sweep",
+        "Expected a dual charging-current sweep.",
+    )
+    validation = check_batch(source)
+    _require_batch(
+        validation["valid"],
+        "Dual sweep validation failed: " + "; ".join(validation["errors"]),
+    )
+    _require_batch(
+        document == _read_json(source / "dual_experiment.json"),
+        "Manifest changed during validation.",
+    )
+    destination.mkdir(parents=True)
+    exporter = import_module("analysis.export_recorded_analysis")
+    phases = []
+    cycles = []
+    groups = []
+    for preview, channel_report in zip(
+        document["plan"]["channels"], document["report"]["channels"]
+    ):
+        channel = preview["channel"]
+        specimen = preview["specimen_id"]
+        condition_rows = {}
+        conditions = {
+            entry["condition_id"]: entry
+            for entry in preview["sweep_plan"]["conditions"]
+        }
+        for phase, outcome in zip(
+            preview["acquisition_plan"]["phases"],
+            channel_report["outcomes"],
+        ):
+            if phase["type"] == "rest":
+                continue
+            name = f"channel_{channel}_phase_{phase['phase_index']:04d}"
+            result = exporter.export_analysis(
+                outcome["run_directory"], destination / name
+            )
+            _require_batch(
+                result["acquisition_outcome"]["state"] == "returned",
+                "Phase no longer has a returned recording.",
+            )
+            metrics = result["calculation"]["summary"]
+            row = {
+                "channel": channel,
+                "specimen_id": specimen,
+                "stage_id": phase["sweep_stage_id"],
+                "condition_index": phase["sweep_condition_index"],
+                "repeat_index": phase["sweep_repeat_index"],
+                "charge_current_a": phase["sweep_charge_current_a"],
+                "phase_index": phase["phase_index"],
+                "cycle": phase["cycle"],
+                "type": phase["type"],
+                "source_directory": outcome["run_directory"],
+                "analysis_directory": name,
+                **{key: metrics[key] for key in METRICS},
+                "warning_count": len(result["warnings"]),
+                "warnings": list(result["warnings"]),
+            }
+            phases.append(row)
+            if phase["sweep_stage_id"] != "initial_discharge":
+                condition_rows.setdefault(
+                    phase["sweep_stage_id"], []
+                ).append(row)
+        channel_cycles = []
+        for stage_id, rows in condition_rows.items():
+            condition = conditions[stage_id]
+            stage = {**condition, "stage_id": stage_id}
+            channel_cycles.extend({
+                "channel": channel,
+                "specimen_id": specimen,
+                **row,
+            } for row in _sweep_cycle_rows(stage, rows))
+        cycles.extend(channel_cycles)
+        groups.extend({
+            "channel": channel,
+            "specimen_id": specimen,
+            **row,
+        } for row in _sweep_group_rows(channel_cycles))
+    _write_sweep_csv(
+        destination / "summary.csv",
+        (
+            "channel", "specimen_id", "stage_id", "condition_index",
+            "repeat_index", "charge_current_a", "analysis_directory", *CSV_FIELDS,
+        ),
+        phases,
+    )
+    _write_sweep_csv(
+        destination / "cycle_comparison.csv",
+        ("channel", "specimen_id", *SWEEP_CYCLE_FIELDS),
+        cycles,
+    )
+    _write_sweep_csv(
+        destination / "current_summary.csv",
+        (
+            "channel", "specimen_id", "charge_current_a", "metric", "unit",
+            "condition_count", "cycle_count", "observation_count", "mean",
+            "sample_stddev", "minimum", "maximum",
+        ),
+        groups,
+    )
+    final_validation = check_batch(source)
+    _require_batch(
+        final_validation["valid"]
+        and document == _read_json(source / "dual_experiment.json"),
+        "Dual sweep changed or no longer validates; analysis is incomplete.",
+    )
+    report = {
+        "dual_sweep_analysis_schema_version": 1,
+        "analysis_state": "completed",
+        "source_directory": str(source),
+        "validation": final_validation,
+        "warnings": [
+            *final_validation["warnings"],
+            "Initial preparation is excluded from condition comparisons.",
+            "Recorded spans are sample-to-sample, not output-enable durations.",
+            "Signed charge retains measurement signs; directional energy "
+            "magnitudes are not independently established device efficiency.",
+            "Statistics are descriptive and kept separate by channel/specimen.",
+            "Inputs must remain unchanged; validation is not a filesystem snapshot.",
+        ],
+        "phases": phases,
+        "cycles": cycles,
+        "current_summary": groups,
+    }
+    _write_json(destination / "summary.json", report)
+    with (destination / "ANALYSIS_COMPLETE").open("x", encoding="utf-8") as handle:
+        handle.write("completed\n")
+    return report
+def analyze_dual_sweep(directory, output_directory):
+    """Offline dual sweep export with per-channel multi-unit presentation."""
+    import sys
+    from analysis.export_experiment import _print_sweep_summary
+    try:
+        report = export_dual_sweep(directory, output_directory)
+    except (
+        OSError, ValueError, TypeError, KeyError, RuntimeError,
+        OverflowError, csv.Error,
+    ) as error:
+        print(f"Dual sweep analysis failed: {error}", file=sys.stderr)
+        print(
+            "Any destination is partial unless its ANALYSIS_COMPLETE exists.",
+            file=sys.stderr,
+        )
+        return 1
+    for channel in sorted({row["channel"] for row in report["cycles"]}):
+        rows = [row for row in report["cycles"] if row["channel"] == channel]
+        print(f"\nCH{channel} ? specimen {rows[0]['specimen_id']}")
+        _print_sweep_summary(
+            {"cycles": rows, "warnings": []}, output_directory
+        )
+    for warning in report["warnings"]:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    return 0

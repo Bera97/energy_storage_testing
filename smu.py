@@ -92,6 +92,10 @@ def _unified_analyze(document, run_name):
             str(source), str(destination)
         )
     if (source / "dual_experiment.json").is_file():
+        if document["experiment"]["type"] == "charge_current_sweep":
+            return import_module(
+                "analysis.dual_experiment"
+            ).analyze_dual_sweep(str(source), str(destination))
         return import_module(
             "analysis.dual_experiment"
         ).analyze_run(str(source), str(destination))
@@ -181,8 +185,47 @@ def _unified_main(arguments):
             doc["experiment"]["type"] == "charge_current_sweep"
             for doc in documents
         ):
+            if len(documents) == 2:
+                if any(
+                    doc["experiment"]["type"] != "charge_current_sweep"
+                    for doc in documents
+                ):
+                    raise ValueError(
+                        "Use two sweep profiles or two preconditioning profiles."
+                    )
+                if parsed.analyze is not None and any(
+                    "analysis_directory" not in doc["output"]
+                    for doc in documents
+                ):
+                    raise ValueError("Set output.analysis_directory in both profiles.")
+                planner = import_module("experiments.sweeps")
+                planner.build_dual_charge_current_sweep_plan(documents)
+                if parsed.execute:
+                    run_name = _unified_run_name(documents[0])
+                    status = import_module(
+                        "experiments.dual_live"
+                    ).run_configured(
+                        documents, execute_requested=True, batch_id=run_name
+                    )
+                    if status != 0:
+                        if parsed.analyze is not None:
+                            print(
+                                "Run did not complete; analysis skipped.",
+                                file=sys.stderr,
+                            )
+                        return status
+                    if parsed.analyze is not None:
+                        return _unified_analyze(documents[0], run_name)
+                    return 0
+                if parsed.analyze is not None:
+                    return _unified_analyze(documents[0], parsed.analyze)
+                print(json.dumps(
+                    planner.build_dual_charge_current_sweep_plan(documents),
+                    indent=2, allow_nan=False,
+                ))
+                return 0
             if len(documents) != 1:
-                raise ValueError("Charging-current sweeps accept exactly one profile.")
+                raise ValueError("Supply one or two sweep profiles.")
             document = documents[0]
             if (
                 parsed.analyze is not None

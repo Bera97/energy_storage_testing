@@ -8,6 +8,20 @@ def build_dual_plan(documents, *, maximum_records=100000):
     """Validate two independent profiles without I/O or execution."""
     if not isinstance(documents, (list, tuple)) or len(documents) != 2:
         raise ValueError("Exactly two configuration documents are required.")
+    sweep_flags = [
+        document.get("experiment", {}).get("type") == "charge_current_sweep"
+        for document in documents
+    ]
+    if any(sweep_flags):
+        if not all(sweep_flags):
+            raise ValueError(
+                "Use two sweep profiles or two preconditioning profiles; "
+                "mixed experiment types are not supported."
+            )
+        from experiments.sweeps import build_dual_charge_current_sweep_plan
+        return build_dual_charge_current_sweep_plan(
+            documents, maximum_records=maximum_records
+        )
     previews = [
         execution_preview(deepcopy(document), maximum_records=maximum_records)
         for document in documents

@@ -348,3 +348,31 @@ sample standard deviation.
 Do not modify recordings while validating or exporting. Manifests are checked
 again, but these reads do not constitute a filesystem snapshot. Failed exports
 can leave partial output without a top-level ANALYSIS_COMPLETE.
+### Dual-channel charging-current sweeps
+All experiment development must cover both single- and dual-channel operation.
+Charging-current sweeps support two reviewed sweep profiles through one shared
+instrument session. Do not run two single-channel sweep processes against one SMU.
+```powershell
+python -m smu --config YOUR_CH1_SWEEP.yaml --config YOUR_CH2_SWEEP.yaml --preview
+python -m smu --config YOUR_CH1_SWEEP.yaml --config YOUR_CH2_SWEEP.yaml --execute --analyze
+python -m smu --config YOUR_CH1_SWEEP.yaml --config YOUR_CH2_SWEEP.yaml --analyze RUN_NAME
+```
+Use channel 1 and channel 2, distinct specimen IDs, the same VISA resource and
+expected serial, and matching recording/analysis roots. Each profile can specify
+its own charging-current list, repeats, cycles, discharge settings, and rests.
+Both channels must complete initial discharge and following rest before either
+starts charging. Thereafter phase progression is independent, not lockstep.
+A completed channel remains stopped while its peer continues. A fault invokes
+the existing stop-both, interrupted-recording finalization, and session-close
+handling. There is no automatic retry or resume.
+The dual_experiment.json manifest records both complete sweep sequences.
+DUAL_COMPLETE marks successful dual-run finalization. Analysis includes channel
+and specimen identity, per-condition cycle comparisons, per-current statistics
+kept separate by channel, and multi-unit console summaries. Initial preparation
+is excluded from condition comparisons. ANALYSIS_COMPLETE is written last.
+Dual operation still requires qualification of physical wiring and the joint
+instrument operating envelope. Offline tests use fake instrument operations.
+CV-hold requirement for future implementation: an additional hold after reaching
+the charging-current fraction starts immediately at the first valid strictly
+below-threshold current sample with CV confirmed, without a qualification delay.
+This dual-sweep change does not yet implement either new CV-hold policy.

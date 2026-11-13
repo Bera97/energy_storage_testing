@@ -77,7 +77,7 @@ def validate_charge_current_sweep(document):
         "condition_count": len(conditions),
         "sweep_conditions": conditions,
     }
-def build_charge_current_sweep_plan(document):
+def build_charge_current_sweep_plan(document, *, maximum_records=100000):
     """Validate every condition, monitoring setting, ceiling, and budget."""
     from experiments.run_live import execution_preview
     from experiments.settings import require_ceilings, settings_for
@@ -86,7 +86,7 @@ def build_charge_current_sweep_plan(document):
     for entry in validated["sweep_conditions"]:
         config = entry["config"]
         try:
-            preview = execution_preview(config)
+            preview = execution_preview(config, maximum_records=maximum_records)
             settings = settings_for(config)
             require_ceilings(settings, preview)
         except (ValueError, TypeError, KeyError) as error:
@@ -416,3 +416,114 @@ def run_configured_sweep(document, *, sweep_id):
             ),
         }, indent=2, allow_nan=False), file=sys.stderr)
         return 130 if isinstance(error, KeyboardInterrupt) else 1
+def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
+    """Two independent sweeps in one validated shared-session dual plan."""
+    from pathlib import Path
+    from experiments.dual_preconditioning import build_dual_plan
+    if not isinstance(documents, (list, tuple)) or len(documents) != 2:
+        raise ValueError("Exactly two sweep profiles are required.")
+    snapshots = deepcopy(list(documents))
+    if any(
+        document.get("experiment", {}).get("type") != "charge_current_sweep"
+        for document in snapshots
+    ):
+        raise ValueError("Both profiles must be charging-current sweeps.")
+    sweeps = [
+        build_charge_current_sweep_plan(
+            document, maximum_records=maximum_records
+        )
+        for document in snapshots
+    ]
+    # Standard dual planning checks channels, resource, and distinct specimens.
+    plan = build_dual_plan(
+        [sweep["conditions"][0]["config"] for sweep in sweeps],
+        maximum_records=maximum_records,
+    )
+    roots = [
+        Path(document["output"]["root_directory"]).resolve()
+        for document in snapshots
+    ]
+    if roots[0] != roots[1]:
+        raise ValueError("Use the same output root in both sweep profiles.")
+    analysis_roots = [
+        document["output"].get("analysis_directory")
+        for document in snapshots
+    ]
+    if (
+        (analysis_roots[0] is None) != (analysis_roots[1] is None)
+        or (
+            analysis_roots[0] is not None
+            and Path(analysis_roots[0]).resolve()
+            != Path(analysis_roots[1]).resolve()
+        )
+    ):
+        raise ValueError("Use the same analysis directory in both sweep profiles.")
+    serials = [
+        sweep["conditions"][0]["execution_settings"]["expected_serial"]
+        for sweep in sweeps
+    ]
+    if serials[0] != serials[1]:
+        raise ValueError("Both sweep profiles must use the same expected serial.")
+    by_channel = {
+        document["instrument"]["channel"]: (document, sweep)
+        for document, sweep in zip(snapshots, sweeps)
+    }
+    for preview in plan["channels"]:
+        document, sweep = by_channel[preview["channel"]]
+        phases = []
+        def append_phase(phase, stage_id, condition=None):
+            item = deepcopy(phase)
+            item["condition_phase_index"] = item["phase_index"]
+            item["phase_index"] = len(phases)
+            item["sweep_stage_id"] = stage_id
+            item["sweep_condition_index"] = (
+                None if condition is None else condition["condition_index"]
+            )
+            item["sweep_repeat_index"] = (
+                None if condition is None else condition["repeat_index"]
+            )
+            item["sweep_charge_current_a"] = (
+                None if condition is None else condition["charge_current_a"]
+            )
+            phases.append(item)
+        for phase in sweep["initial_discharge"]["phases"]:
+            append_phase(phase, "initial_discharge")
+        for condition in sweep["conditions"]:
+            for phase in condition["preview"]["acquisition_plan"]["phases"]:
+                append_phase(phase, condition["condition_id"], condition)
+        preview["sweep_plan"] = deepcopy(sweep)
+        preview["required_preflight_ceiling_a"] = max(
+            condition["preview"]["required_preflight_ceiling_a"]
+            for condition in sweep["conditions"]
+        )
+        preview["required_preflight_ceiling_v"] = max(
+            condition["preview"]["required_preflight_ceiling_v"]
+            for condition in sweep["conditions"]
+        )
+        preview["acquisition_plan"].update(
+            experiment_type="charge_current_sweep",
+            configuration=deepcopy(document),
+            phase_count=len(phases),
+            phases=phases,
+        )
+    plan.update(
+        experiment_type="dual_charge_current_sweep",
+        live_backend_available=True,
+        execution_available=True,
+        initial_preparation_barrier=True,
+        total_phase_count=sum(
+            preview["acquisition_plan"]["phase_count"]
+            for preview in plan["channels"]
+        ),
+        limitations=[
+            "Preview performs no hardware execution.",
+            "One shared session owns both channels; do not use two processes.",
+            "Both initial discharge/rest sequences must complete before charging.",
+            "After initial preparation, channels progress independently.",
+            "Current lists, repeats, and cycle counts may differ between channels.",
+            "A fault stops both channels; no automatic retry or resume.",
+            "Physical wiring and the joint operating envelope require qualification.",
+        ],
+    )
+    json.dumps(plan, allow_nan=False)
+    return plan
