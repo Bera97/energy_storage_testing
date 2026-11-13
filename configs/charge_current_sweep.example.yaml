@@ -63,3 +63,5 @@ sweep:
   - 0.2
   - 0.4
   repeats: 1
+  # Once before the first charge: configured discharge, then post-discharge rest.
+  initial_discharge: true

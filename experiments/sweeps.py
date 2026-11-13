@@ -27,8 +27,11 @@ def validate_charge_current_sweep(document):
     sweep = _mapping(
         document["sweep"],
         "sweep",
-        required=("charge_current_a", "repeats"),
+        required=("charge_current_a", "repeats", "initial_discharge"),
     )
+    if sweep["initial_discharge"] is not True:
+        raise ValueError("sweep.initial_discharge must be true.")
+
     values = sweep["charge_current_a"]
     if not isinstance(values, list) or not values:
         raise ValueError("sweep.charge_current_a must be a nonempty list.")
@@ -94,6 +97,25 @@ def build_charge_current_sweep_plan(document):
             "execution_settings": settings,
             "preview": preview,
         })
+    initial_config = conditions[0]["config"]
+    initial_phases = deepcopy(
+        conditions[0]["preview"]["acquisition_plan"]["phases"][2:4]
+    )
+    initial_discharge = {
+        "stage_id": "initial_discharge",
+        "state": "planned",
+        "phase_count": 2,
+        "current_a": initial_phases[0]["current_magnitude_a"],
+        "cutoff_voltage_v": initial_phases[0]["cutoff_voltage_v"],
+        "maximum_duration_s": initial_phases[0]["maximum_duration_s"],
+        "rest_after_s": initial_config["rest"]["after_discharge_s"],
+        "phases": initial_phases,
+        "phase_identity_policy": (
+            "Canonical preconditioning phase identities retained; "
+            "this separate stage executes only discharge and following rest."
+        ),
+    }
+
     plan = {
         "sweep_plan_schema_version": 1,
         "experiment_type": "charge_current_sweep",
@@ -104,16 +126,22 @@ def build_charge_current_sweep_plan(document):
         "will_enable_output": False,
         "parameter": "charge.current.current_a",
         "unit": "A",
-        "ordering": "supplied_current_order_then_repeat",
+        "ordering": "initial_discharge_then_supplied_current_order_then_repeat",
         "repeats_per_current": document["sweep"]["repeats"],
         "condition_count": len(conditions),
-        "total_phase_count": sum(
+        "condition_phase_count": sum(
+            item["preview"]["acquisition_plan"]["phase_count"]
+            for item in conditions
+        ),
+        "initial_discharge": initial_discharge,
+        "total_phase_count": 2 + sum(
             item["preview"]["acquisition_plan"]["phase_count"]
             for item in conditions
         ),
         "starting_state_policy": (
-            "Planning does not establish comparable initial state. "
-            "An execution/conditioning policy is required before sweep execution."
+            "Initial discharge to configured cutoff, followed by configured "
+            "post-discharge rest, once before the first condition. "
+            "No charging condition may start unless both initial phases succeed."
         ),
         "limitations": [
             "Preview only; sweep execution and combined analysis are not implemented.",

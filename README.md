@@ -253,6 +253,7 @@ and adds:
 sweep:
   charge_current_a: [0.1, 0.2, 0.4]
   repeats: 1
+  initial_discharge: true
 ```
 These are planning examples, not independently verified safe limits.
 Each current expands into the requested number of separate planned
@@ -267,3 +268,18 @@ All conditions must validate before a plan is returned. Preview creates
 no recording directories and does not authorize execution or establish a
 comparable starting state. Sweep execution and combined analysis are
 explicitly rejected in this increment. Normal preconditioning is unchanged.
+### Initial discharge for charging-current sweeps
+`sweep.initial_discharge: true` is required. The plan begins with one
+discharge using the configured discharge current, voltage cutoff, and
+maximum duration, followed by `rest.after_discharge_s` with outputs OFF.
+This preparation occurs once before the first condition, not before
+every repeat. Every condition still contains its configured complete
+charge/rest/discharge/rest cycles.
+The initial stage is separately identified in preview. Its phase
+identities retain the canonical discharge/rest indices, rather than
+pretending it is a complete preconditioning cycle. Total phase count
+includes these two additional phases.
+Execution must stop if initial discharge or its rest fails. Planning
+does not establish physical readiness or guarantee identical specimen
+state across conditions. Sweep hardware execution remains blocked until
+the sequential executor and its recording/failure handling are implemented.

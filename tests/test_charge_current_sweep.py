@@ -22,6 +22,7 @@ def profile(tmp_path):
     document["sweep"] = {
         "charge_current_a": [0.1, 0.2],
         "repeats": 2,
+        "initial_discharge": True,
     }
     return document
 def save(profile, tmp_path):
@@ -43,9 +44,10 @@ def test_expansion_preserves_inputs_and_unswept_settings(profile):
         "condition_0002_repeat_0001",
         "condition_0002_repeat_0002",
     ]
-    assert plan["total_phase_count"] == (
+    assert plan["condition_phase_count"] == (
         4 * profile["experiment"]["cycles"] * 4
     )
+    assert plan["total_phase_count"] == 2 + plan["condition_phase_count"]
     assert json.loads(json.dumps(plan, allow_nan=False)) == plan
     for item in plan["conditions"]:
         config = item["config"]
@@ -165,3 +167,38 @@ def test_normal_preconditioning_does_not_accept_sweep_fields(profile):
     profile["experiment"]["type"] = "preconditioning"
     with pytest.raises(ValueError, match="unknown fields"):
         validate_config(profile)
+def test_initial_discharge_uses_existing_profile_settings(profile):
+    original = deepcopy(profile)
+    plan = build_charge_current_sweep_plan(profile)
+    initial = plan["initial_discharge"]
+    assert initial["stage_id"] == "initial_discharge"
+    assert initial["state"] == "planned"
+    assert initial["phase_count"] == 2
+    assert [phase["type"] for phase in initial["phases"]] == [
+        "discharge_cc", "rest",
+    ]
+    assert initial["current_a"] == pytest.approx(0.4)
+    assert initial["cutoff_voltage_v"] == profile["discharge"]["cutoff_voltage_v"]
+    assert initial["maximum_duration_s"] == profile["discharge"]["maximum_duration_s"]
+    assert initial["rest_after_s"] == profile["rest"]["after_discharge_s"]
+    assert initial["phases"][1]["duration_s"] == initial["rest_after_s"]
+    assert initial["phases"][1]["requires_verified_output_off"] is True
+    assert initial["phases"][0]["acquisition_budget"]["record_count"] > 1
+    assert profile == original
+@pytest.mark.parametrize("value", [False, None, 0, 1, "true"])
+def test_initial_discharge_requires_explicit_boolean_true(profile, value):
+    profile["sweep"]["initial_discharge"] = value
+    with pytest.raises(ValueError, match="initial_discharge"):
+        validate_config(profile)
+def test_missing_initial_discharge_policy_is_rejected(profile):
+    del profile["sweep"]["initial_discharge"]
+    with pytest.raises(ValueError, match="initial_discharge"):
+        validate_config(profile)
+def test_initial_discharge_occurs_once_not_once_per_repeat(profile):
+    profile["sweep"]["repeats"] = 3
+    profile["experiment"]["cycles"] = 2
+    plan = build_charge_current_sweep_plan(profile)
+    assert plan["condition_count"] == 6
+    assert plan["condition_phase_count"] == 48
+    assert plan["initial_discharge"]["phase_count"] == 2
+    assert plan["total_phase_count"] == 50
