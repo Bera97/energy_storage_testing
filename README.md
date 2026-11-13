@@ -316,3 +316,35 @@ Recorded shutdown evidence is not independent proof of electrical isolation.
 hardware execution. Individual condition folders remain ordinary
 preconditioning recordings; the initial discharge requires explicit
 preparation-scope validation. Do not modify recordings during validation.
+### Combined charging-current sweep analysis ? current support
+This section supersedes earlier notes that sweep analysis is unsupported.
+```powershell
+python -m smu --config YOUR_REVIEWED_SWEEP_PROFILE.yaml --execute --analyze
+python -m smu --config YOUR_SWEEP_PROFILE.yaml --analyze RUN_NAME
+```
+Execution followed by analysis runs analysis only after successful execution.
+Analysis alone is offline. Set output.analysis_directory in the profile.
+Existing analysis destinations are refused rather than overwritten.
+Sweep validation reconstructs the condition plan from stored configuration,
+checks initial preparation and condition order, restricts stage paths, and
+revalidates every stage's recordings and instrument-session completion.
+The analysis destination contains:
+- summary.json: combined results, provenance, validation, and warnings.
+- summary.csv: active-phase metrics including initial preparation.
+- cycle_comparison.csv: paired charge/discharge metrics per condition/cycle.
+- current_summary.csv: descriptive statistics grouped by configured current.
+- Separate initial_discharge and condition analysis subdirectories.
+- A top-level ANALYSIS_COMPLETE only after successful combined export.
+Initial preparation is excluded from current comparisons. Signed quantities
+retain measurement signs. Directional energy columns contain nonnegative
+magnitudes. recorded_energy_ratio divides discharge negative-energy magnitude
+by charge positive-energy magnitude over recorded samples; zero-denominator
+ratios are empty. This is not an independently established device efficiency.
+Recorded spans exclude unrecorded time before the first sample and must not be
+reported as output-enable durations. Rest contributes no measured energy here.
+Grouped statistics count cycle observations; they do not assert that cycles
+within a condition are independent replicates. A single observation has no
+sample standard deviation.
+Do not modify recordings while validating or exporting. Manifests are checked
+again, but these reads do not constitute a filesystem snapshot. Failed exports
+can leave partial output without a top-level ANALYSIS_COMPLETE.

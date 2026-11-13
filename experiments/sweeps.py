@@ -147,7 +147,7 @@ def build_charge_current_sweep_plan(document):
         ),
         "limitations": [
             "Preview performs no execution; --execute is required. "
-            "Combined sweep analysis is not implemented.",
+            "Completed sweeps can be exported with --analyze RUN_NAME.",
             "Each condition retains the configured preconditioning cycle sequence.",
             "Termination-reference rules remain unchanged; inspect the resolved "
             "termination current for every condition.",

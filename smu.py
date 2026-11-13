@@ -59,6 +59,14 @@ def _unified_run_name(document):
 def _unified_analyze(document, run_name):
     """Analyze one recorded run; folder names come from YAML only."""
 
+    if (
+        not isinstance(run_name, str)
+        or not run_name
+        or run_name in (".", "..")
+        or "/" in run_name
+        or chr(92) in run_name
+    ):
+        raise ValueError("RUN_NAME must be a single run-folder name.")
     output = document["output"]
 
     if "analysis_directory" not in output:
@@ -79,6 +87,10 @@ def _unified_analyze(document, run_name):
     destination = Path(output["analysis_directory"]) / run_name
     destination.parent.mkdir(parents=True, exist_ok=True)
 
+    if (source / "sweep.json").is_file():
+        return import_module("analysis.export_experiment").analyze_sweep(
+            str(source), str(destination)
+        )
     if (source / "dual_experiment.json").is_file():
         return import_module(
             "analysis.dual_experiment"
@@ -165,21 +177,40 @@ def _unified_main(arguments):
 
     try:
         _unified_config_paths(documents, paths)
-        if any(doc["experiment"]["type"] == "charge_current_sweep" for doc in documents):
+        if any(
+            doc["experiment"]["type"] == "charge_current_sweep"
+            for doc in documents
+        ):
             if len(documents) != 1:
                 raise ValueError("Charging-current sweeps accept exactly one profile.")
-            if parsed.analyze is not None:
+            document = documents[0]
+            if (
+                parsed.analyze is not None
+                and "analysis_directory" not in document["output"]
+            ):
                 raise ValueError(
-                    "Sweep analysis is not implemented; use --execute "
-                    "without --analyze to record a sweep."
+                    "Set output.analysis_directory in the YAML profile "
+                    "to use --analyze."
                 )
             planner = import_module("experiments.sweeps")
             if parsed.execute:
-                return planner.run_configured_sweep(
-                    documents[0],
-                    sweep_id=_unified_run_name(documents[0]),
+                run_name = _unified_run_name(document)
+                status = planner.run_configured_sweep(
+                    document, sweep_id=run_name
                 )
-            plan = planner.build_charge_current_sweep_plan(documents[0])
+                if status != 0:
+                    if parsed.analyze is not None:
+                        print(
+                            "Run did not complete; analysis skipped.",
+                            file=sys.stderr,
+                        )
+                    return status
+                if parsed.analyze is not None:
+                    return _unified_analyze(document, run_name)
+                return 0
+            if parsed.analyze is not None:
+                return _unified_analyze(document, parsed.analyze)
+            plan = planner.build_charge_current_sweep_plan(document)
             print(json.dumps(plan, indent=2, allow_nan=False))
             return 0
 

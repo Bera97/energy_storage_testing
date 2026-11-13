@@ -136,22 +136,7 @@ def test_public_preview_does_not_execute_or_write(
     assert after == before
     assert not Path(profile["output"]["root_directory"]).exists()
     assert not Path(profile["output"]["analysis_directory"]).exists()
-@pytest.mark.parametrize("flags", [
-    ["--execute", "--analyze"],
-    ["--analyze", "existing_run"],
-])
-def test_unimplemented_execution_and_analysis_are_blocked(
-    profile, tmp_path, monkeypatch, capsys, flags
-):
-    import experiments.run_live as single
-    path = save(profile, tmp_path)
-    def forbidden(*args, **kwargs):
-        pytest.fail("Preview-only sweep attempted execution or analysis.")
-    monkeypatch.setattr(single, "_new_smu", forbidden)
-    monkeypatch.setattr(single, "run_configured", forbidden)
-    monkeypatch.setattr(smu, "_unified_analyze", forbidden)
-    assert smu.main(["--config", str(path), *flags]) == 1
-    assert "Sweep analysis is not implemented" in capsys.readouterr().err
+
 def test_multiple_profiles_are_rejected(profile, tmp_path, capsys):
     path = save(profile, tmp_path)
     assert smu.main([
@@ -500,3 +485,275 @@ def test_stage_gate_rejects_unverified_session_field(
     )
     with pytest.raises(RuntimeError, match=field):
         _check_sweep_stage(directory, configuration, True, report)
+@pytest.fixture
+def completed_recorded_sweep(tmp_path, monkeypatch):
+    """Real live runner/recorder/transports; fake instrument and virtual clock."""
+    import test_recorded_phase_executor as executor_tests
+    import experiments.run_live as live
+    from experiments.acquisition_budget import build_acquisition_plan
+    from experiments.sweeps import execute_charge_current_sweep
+    fixture = executor_tests.RecordedPhaseExecutorTests(
+        methodName="test_charge_returns_finalized_recording"
+    )
+    fixture.setUp()
+    try:
+        document = deepcopy(fixture.document)
+        document["experiment"]["type"] = "charge_current_sweep"
+        document["experiment"]["cycles"] = 1
+        document["charge"]["termination"]["current_reference"] = "configured_charge_current"
+        document["charge"]["termination"]["hold_time_s"] = 2.0
+        document["charge"]["maximum_duration_s"] = 10
+        document["charge"]["maximum_cv_duration_s"] = 5
+        document["discharge"]["maximum_duration_s"] = 10
+        document["rest"]["after_charge_s"] = 0.1
+        document["rest"]["after_discharge_s"] = 0.1
+        document["output"] = {
+            "root_directory": str(tmp_path / "recordings"),
+            "file_name": "offline_sweep",
+            "analysis_directory": str(tmp_path / "analysis"),
+        }
+        document["execution"] = {
+            "expected_serial": "TESTSERIAL",
+            "maximum_voltage_v": 4.2,
+            "maximum_current_a": 4.0,
+        }
+        document["sweep"] = {
+            "charge_current_a": [0.1, 0.2],
+            "repeats": 1,
+            "initial_discharge": True,
+        }
+        root = Path(document["output"]["root_directory"]) / "recorded_sweep"
+        driver = fixture.smu
+        driver.identity = "Keysight Technologies,B2902B,TESTSERIAL,TESTFW"
+        driver.is_connected = False
+        connections = []
+        def connect():
+            overall = json.loads((root / "sweep.json").read_text(encoding="utf-8"))
+            stage_id = overall["active_stage_id"]
+            assert (root / stage_id / "experiment.json").is_file()
+            connections.append(stage_id)
+            driver.is_connected = True
+            return driver
+        def close():
+            driver.is_connected = False
+        driver.connect = connect
+        driver.close = close
+        executor_class = live.RecordedPhaseExecutor
+        backend_class = live.RecordedPreconditioningBackend
+        def executor(smu, configuration, *args, **options):
+            fixture.document = deepcopy(configuration)
+            fixture.acquisition_plan = build_acquisition_plan(
+                configuration, maximum_records=100000
+            )
+            return executor_class(
+                smu, configuration, *args,
+                clock=fixture.clock,
+                sleep=fixture.clock.sleep,
+                **options,
+            )
+        def backend(smu, **options):
+            return backend_class(
+                smu, clock=fixture.clock, sleep=fixture.clock.sleep, **options
+            )
+        monkeypatch.setattr(live, "_new_smu", lambda *args: driver)
+        monkeypatch.setattr(live, "RecordedPhaseExecutor", executor)
+        monkeypatch.setattr(live, "RecordedPreconditioningBackend", backend)
+        manifest, directory = execute_charge_current_sweep(
+            document, sweep_id="recorded_sweep"
+        )
+        assert manifest["state"] == "completed"
+        assert len(connections) == 3
+        assert driver.is_connected is False
+        yield document, directory, manifest
+    finally:
+        fixture.doCleanups()
+def test_full_recorded_sweep_validates(completed_recorded_sweep):
+    from analysis.export_experiment import validate_sweep
+    _, directory, _ = completed_recorded_sweep
+    validation = validate_sweep(directory)
+    assert validation["valid"], validation["errors"]
+    assert validation["stages_checked"] == 3
+    assert validation["phase_recordings_checked"] == 5
+def test_full_sweep_export_preserves_sources(completed_recorded_sweep, tmp_path):
+    import csv
+    from analysis.export_experiment import export_sweep
+    _, directory, _ = completed_recorded_sweep
+    before = {
+        path.relative_to(directory): path.read_bytes()
+        for path in directory.rglob("*") if path.is_file()
+    }
+    destination = tmp_path / "combined_analysis"
+    report = export_sweep(directory, destination)
+    assert report["analysis_state"] == "completed"
+    assert len(report["phases"]) == 5
+    assert len(report["cycles"]) == 2
+    assert all(row["condition_id"] != "initial_discharge" for row in report["cycles"])
+    assert (destination / "ANALYSIS_COMPLETE").is_file()
+    assert (
+        destination / "initial_discharge" / "ANALYSIS_COMPLETE"
+    ).is_file()
+    for name, count in [
+        ("summary.csv", 5), ("cycle_comparison.csv", 2), ("current_summary.csv", 14)
+    ]:
+        with (destination / name).open(encoding="utf-8", newline="") as handle:
+            assert len(list(csv.DictReader(handle))) == count
+    assert all(row["sample_stddev"] is None for row in report["current_summary"])
+    after = {
+        path.relative_to(directory): path.read_bytes()
+        for path in directory.rglob("*") if path.is_file()
+    }
+    assert after == before
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "state", "count", "order", "path", "configuration",
+        "stage_state", "phase_count", "session", "missing_recording",
+    ],
+)
+def test_sweep_validation_rejects_inconsistent_evidence(
+    completed_recorded_sweep, mutation
+):
+    from analysis.export_experiment import validate_sweep
+    _, directory, manifest = completed_recorded_sweep
+    stage = manifest["stages"][1]
+    if mutation == "state":
+        manifest["state"] = "running"
+    elif mutation == "count":
+        manifest["completed_stage_count"] -= 1
+    elif mutation == "order":
+        manifest["stages"][1], manifest["stages"][2] = (
+            manifest["stages"][2], manifest["stages"][1]
+        )
+    elif mutation == "path":
+        stage["experiment_directory"] = str(directory.parent)
+    elif mutation == "configuration":
+        stage["configuration"]["rest"]["after_charge_s"] = 999
+    elif mutation == "stage_state":
+        stage["state"] = "pending"
+    elif mutation == "phase_count":
+        stage["completed_phase_count"] = 999
+    else:
+        stage_directory = Path(stage["experiment_directory"])
+        stage_manifest = json.loads(
+            (stage_directory / "experiment.json").read_text(encoding="utf-8")
+        )
+        if mutation == "session":
+            stage_manifest["session_outcome"]["close_succeeded"] = False
+            (stage_directory / "experiment.json").write_text(
+                json.dumps(stage_manifest), encoding="utf-8"
+            )
+        else:
+            evidence = next(
+                entry for entry in stage_manifest["backend_evidence"]
+                if "run_directory" in entry
+            )
+            (Path(evidence["run_directory"]) / "metadata.json").unlink()
+    (directory / "sweep.json").write_text(json.dumps(manifest), encoding="utf-8")
+    validation = validate_sweep(directory)
+    assert validation["valid"] is False
+    assert validation["errors"]
+def test_invalid_sweep_creates_no_analysis(completed_recorded_sweep, tmp_path):
+    from analysis.export_experiment import export_sweep
+    _, directory, manifest = completed_recorded_sweep
+    manifest["state"] = "raised"
+    (directory / "sweep.json").write_text(json.dumps(manifest), encoding="utf-8")
+    destination = tmp_path / "must_not_exist"
+    with pytest.raises(ValueError, match="validation failed"):
+        export_sweep(directory, destination)
+    assert not destination.exists()
+def test_sweep_export_refuses_existing_or_nested_destination(
+    completed_recorded_sweep, tmp_path
+):
+    from analysis.export_experiment import export_sweep
+    _, directory, _ = completed_recorded_sweep
+    destination = tmp_path / "existing_analysis"
+    destination.mkdir()
+    with pytest.raises(FileExistsError):
+        export_sweep(directory, destination)
+    with pytest.raises(ValueError, match="outside"):
+        export_sweep(directory, directory / "analysis")
+def test_failed_subexport_leaves_no_top_completion(
+    completed_recorded_sweep, tmp_path, monkeypatch
+):
+    import analysis.export_experiment as analysis
+    _, directory, _ = completed_recorded_sweep
+    def fail(*args, **kwargs):
+        raise OSError("synthetic export failure")
+    monkeypatch.setattr(analysis, "export_experiment", fail)
+    destination = tmp_path / "partial_analysis"
+    with pytest.raises(OSError, match="synthetic"):
+        analysis.export_sweep(directory, destination)
+    assert not (destination / "ANALYSIS_COMPLETE").exists()
+def test_group_statistics_keep_observation_counts_and_sample_stddev():
+    from analysis.export_experiment import _sweep_group_rows, SWEEP_GROUP_METRICS
+    rows = []
+    for cycle, value in enumerate([1.0, 3.0], 1):
+        rows.append({
+            "condition_id": "same_condition",
+            "charge_current_a": 0.1,
+            **{metric: value for metric in SWEEP_GROUP_METRICS},
+            "cycle": cycle,
+        })
+    grouped = _sweep_group_rows(rows)
+    assert all(row["condition_count"] == 1 for row in grouped)
+    assert all(row["observation_count"] == 2 for row in grouped)
+    assert all(row["mean"] == 2.0 for row in grouped)
+    assert all(row["sample_stddev"] == pytest.approx(2 ** 0.5) for row in grouped)
+def test_public_sweep_analysis_is_offline(
+    completed_recorded_sweep, tmp_path, monkeypatch, capsys
+):
+    import experiments.run_live as live
+    document, directory, _ = completed_recorded_sweep
+    path = save(document, tmp_path)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Offline analysis attempted instrument construction.")
+    monkeypatch.setattr(live, "_new_smu", forbidden)
+    assert smu.main([
+        "--config", str(path), "--analyze", directory.name,
+    ]) == 0
+    assert "Sweep analysis:" in capsys.readouterr().out
+    destination = Path(document["output"]["analysis_directory"]) / directory.name
+    assert (destination / "ANALYSIS_COMPLETE").is_file()
+    assert smu.main([
+        "--config", str(path), "--analyze", directory.name,
+    ]) == 1
+def test_public_execute_then_analyze_dispatches_in_order(
+    profile, tmp_path, monkeypatch
+):
+    import experiments.sweeps as sweeps
+    events = []
+    path = save(profile, tmp_path)
+    monkeypatch.setattr(smu, "_unified_run_name", lambda document: "combined_run")
+    def execute(document, *, sweep_id):
+        events.append(("execute", sweep_id))
+        return 0
+    def analyze(document, run_name):
+        events.append(("analyze", run_name))
+        return 0
+    monkeypatch.setattr(sweeps, "run_configured_sweep", execute)
+    monkeypatch.setattr(smu, "_unified_analyze", analyze)
+    assert smu.main(["--config", str(path), "--execute", "--analyze"]) == 0
+    assert events == [("execute", "combined_run"), ("analyze", "combined_run")]
+def test_failed_execution_skips_sweep_analysis(
+    profile, tmp_path, monkeypatch, capsys
+):
+    import experiments.sweeps as sweeps
+    path = save(profile, tmp_path)
+    monkeypatch.setattr(smu, "_unified_run_name", lambda document: "failed_run")
+    monkeypatch.setattr(sweeps, "run_configured_sweep", lambda *args, **kwargs: 1)
+    def forbidden(*args):
+        pytest.fail("Failed sweep reached analysis.")
+    monkeypatch.setattr(smu, "_unified_analyze", forbidden)
+    assert smu.main(["--config", str(path), "--execute", "--analyze"]) == 1
+    assert "analysis skipped" in capsys.readouterr().err
+def test_combined_mode_requires_analysis_directory_before_execution(
+    profile, tmp_path, monkeypatch, capsys
+):
+    import experiments.sweeps as sweeps
+    del profile["output"]["analysis_directory"]
+    path = save(profile, tmp_path)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Missing analysis settings were detected after execution.")
+    monkeypatch.setattr(sweeps, "run_configured_sweep", forbidden)
+    assert smu.main(["--config", str(path), "--execute", "--analyze"]) == 1
+    assert "analysis_directory" in capsys.readouterr().err
