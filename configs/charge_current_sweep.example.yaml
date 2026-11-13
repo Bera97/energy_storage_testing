@@ -39,7 +39,7 @@ charge:
   cv_voltage_tolerance_v: 0.05
   termination:
     current_reference: configured_charge_current
-    current_factor: 0.05
+    current_factor: 0.1
     hold_time_s: 5
   maximum_duration_s: 3600
   maximum_cv_duration_s: 1800
@@ -59,9 +59,8 @@ output:
   analysis_directory: analysis_outputs
 sweep:
   charge_current_a:
-  - 0.1
   - 0.2
   - 0.4
-  repeats: 1
+  repeats: 2
   # Once before the first charge: configured discharge, then post-discharge rest.
   initial_discharge: true
