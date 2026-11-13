@@ -1,5 +1,7 @@
-# PREVIEW ONLY: copied measurement settings are not hardware-qualified.
-# Replace the specimen ID and review the entire profile before execution.
+# Charge termination is configured only under charge.termination.
+# hold_time_s is interpreted according to termination.mode.
+# maximum_duration_s and maximum_cv_duration_s are failure timeouts.
+# Review specimen, wiring, ratings, and settings before hardware use.
 schema_version: 1
 experiment:
   type: charge_current_sweep
@@ -36,6 +38,7 @@ charge:
   target_voltage_v: 3.8
   cv_voltage_tolerance_v: 0.05
   termination:
+    mode: current_threshold
     current_reference: configured_charge_current
     current_factor: 0.1
     hold_time_s: 5

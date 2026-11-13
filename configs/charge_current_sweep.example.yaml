@@ -1,7 +1,7 @@
-# PREVIEW ONLY: based on the existing LIC profile for planning.
-# These values are not independently verified safe operating limits.
-# Review the initial-state protocol before implementing execution.
-# repeats counts experiments; experiment.cycles counts cycles per experiment.
+# Charge termination is configured only under charge.termination.
+# hold_time_s is interpreted according to termination.mode.
+# maximum_duration_s and maximum_cv_duration_s are failure timeouts.
+# Review specimen, wiring, ratings, and settings before hardware use.
 schema_version: 1
 experiment:
   type: charge_current_sweep
@@ -38,6 +38,7 @@ charge:
   target_voltage_v: 3.8
   cv_voltage_tolerance_v: 0.05
   termination:
+    mode: current_threshold
     current_reference: configured_charge_current
     current_factor: 0.1
     hold_time_s: 5
@@ -62,5 +63,4 @@ sweep:
   - 0.2
   - 0.4
   repeats: 2
-  # Once before the first charge: configured discharge, then post-discharge rest.
   initial_discharge: true

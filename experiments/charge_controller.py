@@ -67,6 +67,40 @@ def validate_cv_hold(value, maximum_cv_duration_s):
     if duration >= maximum:
         raise ValueError("CV hold duration must be shorter than the CV timeout.")
     return {"mode": value["mode"], "duration_s": duration}
+
+def resolve_charge_cv_hold(charge):
+    """Resolve canonical termination or a legacy configuration without I/O.
+    Canonical YAML uses termination.mode and termination.hold_time_s.
+    Legacy charge.cv_hold is accepted only when termination.mode is absent.
+    Internal phase dictionaries still carry the derived cv_hold policy.
+    """
+    termination = charge["termination"]
+    if "mode" not in termination:
+        if "cv_hold" in charge:
+            return validate_cv_hold(
+                charge["cv_hold"], charge["maximum_cv_duration_s"]
+            )
+        return None
+    if "cv_hold" in charge:
+        raise ValueError(
+            "Configure charge termination in one place: remove charge.cv_hold "
+            "when charge.termination.mode is present."
+        )
+    mode = termination["mode"]
+    if mode not in (
+        "current_threshold", "from_cv_entry", "after_current_threshold"
+    ):
+        raise ValueError(
+            "charge.termination.mode must be current_threshold, "
+            "from_cv_entry, or after_current_threshold."
+        )
+    if mode == "current_threshold":
+        return None
+    return validate_cv_hold(
+        {"mode": mode, "duration_s": termination["hold_time_s"]},
+        charge["maximum_cv_duration_s"],
+    )
+
 def charge_stop_reason(phase):
     return (
         "cv_hold_elapsed"

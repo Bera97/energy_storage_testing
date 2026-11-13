@@ -1,5 +1,7 @@
-# PREVIEW ONLY: review all physical settings before any execution.
-# This demonstrates a CV-hold policy within a one-condition current sweep.
+# Charge termination is configured only under charge.termination.
+# hold_time_s is interpreted according to termination.mode.
+# maximum_duration_s and maximum_cv_duration_s are failure timeouts.
+# Review specimen, wiring, ratings, and settings before hardware use.
 schema_version: 1
 experiment:
   type: charge_current_sweep
@@ -36,14 +38,12 @@ charge:
   target_voltage_v: 3.8
   cv_voltage_tolerance_v: 0.05
   termination:
+    mode: from_cv_entry
     current_reference: configured_charge_current
     current_factor: 0.1
-    hold_time_s: 5
+    hold_time_s: 30.0
   maximum_duration_s: 3600
   maximum_cv_duration_s: 1800
-  cv_hold:
-    mode: from_cv_entry
-    duration_s: 30.0
 rest:
   after_charge_s: 5
   after_discharge_s: 30

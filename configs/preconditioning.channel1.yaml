@@ -1,7 +1,7 @@
-# Execution defaults come from this profile's USB VISA serial and DUT ratings.
-# An execution section is optional and overrides those defaults.
-# Planning example copied from the existing profile.
-# Review actual specimen identity and all limits before any live use.
+# Charge termination is configured only under charge.termination.
+# hold_time_s is interpreted according to termination.mode.
+# maximum_duration_s and maximum_cv_duration_s are failure timeouts.
+# Review specimen, wiring, ratings, and settings before hardware use.
 schema_version: 1
 experiment:
   type: preconditioning
@@ -38,6 +38,7 @@ charge:
   target_voltage_v: 5.5
   cv_voltage_tolerance_v: 0.05
   termination:
+    mode: current_threshold
     current_reference: configured_charge_current
     current_factor: 0.05
     hold_time_s: 5
@@ -55,6 +56,5 @@ discharge:
   maximum_duration_s: 3600
 output:
   root_directory: runs
-  # Run folder becomes <timestamp>_<file_name> inside root_directory.
   file_name: channel1
   analysis_directory: analysis_outputs

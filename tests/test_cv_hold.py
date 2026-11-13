@@ -199,3 +199,84 @@ def test_concrete_dual_policies_record_validate_and_analyze(rig, tmp_path, modes
     assert checked["valid"], checked["errors"]
     result = analyze_batch(directory, tmp_path / "dual_analysis")
     assert result["analysis_state"] == "completed"
+@pytest.mark.parametrize(
+    "mode", ["current_threshold", "from_cv_entry", "after_current_threshold"]
+)
+def test_unified_termination_modes_plan_from_one_location(rig, mode):
+    from experiments.config import validate_config
+    from experiments.preconditioning import build_plan
+    old_plan, _, _ = rig
+    document = deepcopy(old_plan["channels"][0]["acquisition_plan"]["configuration"])
+    document["charge"].pop("cv_hold", None)
+    document["charge"]["termination"] = {
+        "mode": mode,
+        "current_reference": "configured_charge_current",
+        "current_factor": 0.5,
+        "hold_time_s": 0.5,
+    }
+    validated = validate_config(document)["config"]
+    assert validated == document
+    planned = build_plan(document)["phases"][0]
+    if mode == "current_threshold":
+        assert "cv_hold" not in planned
+        assert planned["termination_hold_time_s"] == 0.5
+    else:
+        assert planned["cv_hold"] == {"mode": mode, "duration_s": 0.5}
+def test_unified_and_separate_cv_settings_cannot_be_combined(rig):
+    from experiments.config import validate_config
+    old_plan, _, _ = rig
+    document = deepcopy(old_plan["channels"][0]["acquisition_plan"]["configuration"])
+    document["charge"]["termination"]["mode"] = "from_cv_entry"
+    document["charge"]["cv_hold"] = {
+        "mode": "from_cv_entry", "duration_s": 0.5
+    }
+    with pytest.raises(ValueError, match="one place"):
+        validate_config(document)
+def test_all_tracked_experiment_yaml_profiles_use_unified_termination():
+    import subprocess
+    import yaml
+    from experiments.config import _UniqueSafeLoader
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        ["git", "ls-files", "--", "configs"],
+        cwd=root, capture_output=True, text=True, check=True,
+    )
+    checked = []
+    for name in result.stdout.splitlines():
+        if Path(name).suffix.lower() not in (".yaml", ".yml"):
+            continue
+        document = yaml.load(
+            (root / name).read_text(encoding="utf-8"),
+            Loader=_UniqueSafeLoader,
+        )
+        if not (
+            isinstance(document, dict)
+            and isinstance(document.get("charge"), dict)
+            and isinstance(document["charge"].get("termination"), dict)
+            and isinstance(document.get("experiment"), dict)
+        ):
+            continue
+        charge = document["charge"]
+        assert "cv_hold" not in charge, name
+        assert set(charge["termination"]) == {
+            "mode", "current_reference", "current_factor", "hold_time_s"
+        }, name
+        assert charge["termination"]["mode"] in (
+            "current_threshold", "from_cv_entry", "after_current_threshold"
+        ), name
+        checked.append(name)
+    assert checked
+@pytest.mark.parametrize("mode", ["from_cv_entry", "after_current_threshold"])
+def test_canonical_and_legacy_timed_policies_resolve_equivalently(rig, mode):
+    from experiments.charge_controller import resolve_charge_cv_hold
+    old_plan, _, _ = rig
+    old_charge = deepcopy(
+        old_plan["channels"][0]["acquisition_plan"]["configuration"]["charge"]
+    )
+    old_charge["cv_hold"] = {"mode": mode, "duration_s": 0.5}
+    old_charge["termination"].pop("mode", None)
+    new_charge = deepcopy(old_charge)
+    del new_charge["cv_hold"]
+    new_charge["termination"]["mode"] = mode
+    new_charge["termination"]["hold_time_s"] = 0.5
+    assert resolve_charge_cv_hold(old_charge) == resolve_charge_cv_hold(new_charge)

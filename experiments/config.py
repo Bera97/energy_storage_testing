@@ -1,6 +1,6 @@
 """Hardware-free loading and validation of experiment configuration."""
 
-from experiments.charge_controller import validate_cv_hold
+from experiments.charge_controller import resolve_charge_cv_hold
 from copy import deepcopy
 from dataclasses import asdict
 import math
@@ -353,6 +353,7 @@ def validate_config(document):
             "current_factor",
             "hold_time_s",
         ),
+        optional=("mode",),
     )
 
     hold_time = _number(
@@ -368,34 +369,35 @@ def validate_config(document):
         "charge.maximum_cv_duration_s",
     )
 
+    cv_policy = resolve_charge_cv_hold(charge)
+
     if cv_timeout > charge_timeout:
         raise ValueError(
             "Maximum CV duration must not exceed "
             "maximum total charge duration."
         )
 
-    if "cv_hold" not in charge and hold_time >= cv_timeout:
+    if cv_policy is None and hold_time >= cv_timeout:
         raise ValueError(
             "Termination hold time must be below "
             "maximum CV duration."
         )
 
-    if "cv_hold" not in charge and maximum_gap is not None and maximum_gap >= hold_time:
+    if cv_policy is None and maximum_gap is not None and maximum_gap >= hold_time:
         raise ValueError(
             "acquisition.maximum_sample_gap_s must be "
             "below charge.termination.hold_time_s."
         )
 
-    if "cv_hold" in charge:
-        policy = validate_cv_hold(charge["cv_hold"], cv_timeout)
-        if (
-            policy["mode"] == "after_current_threshold"
-            and termination["current_reference"] != "configured_charge_current"
-        ):
-            raise ValueError(
-                "after_current_threshold requires "
-                "charge.termination.current_reference=configured_charge_current."
-            )
+    if (
+        cv_policy is not None
+        and cv_policy["mode"] == "after_current_threshold"
+        and termination["current_reference"] != "configured_charge_current"
+    ):
+        raise ValueError(
+            "after_current_threshold requires "
+            "charge.termination.current_reference=configured_charge_current."
+        )
     rest = _mapping(
         config["rest"],
         "rest",
