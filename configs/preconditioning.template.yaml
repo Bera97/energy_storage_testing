@@ -5,9 +5,9 @@
 # Supported schema version: 1.
 schema_version: 1
 experiment:
-  # Options: preconditioning | charge_current_sweep.
+  # Options: preconditioning | charge_current_sweep | cv_hold_sweep.
   # Choose the CV-hold policy under charge.termination.mode, not here.
-  # charge_current_sweep additionally requires the sweep section.
+  # Both sweep types additionally require the sweep section.
   type: preconditioning
   name: cell_preconditioning
   # Positive integer: complete charge/rest/discharge/rest cycles per condition.
@@ -91,6 +91,7 @@ charge:
     # In from_cv_entry mode this is diagnostic, not the stopping condition.
     current_factor: null
     # Seconds, interpreted according to mode; this is the only termination timer.
+    # For cv_hold_sweep use a nonempty list; otherwise use one number.
     # current_threshold: consecutive qualifying CV/current time.
     # from_cv_entry: total holding time from first confirmed CV.
     # after_current_threshold: added time from the first strictly below-threshold CV sample.

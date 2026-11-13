@@ -6,72 +6,97 @@ No automatic retry, resume, parallel execution, or supply control.
 from copy import deepcopy
 import json
 from experiments.config import _mapping, _number, validate_config
+
 def validate_charge_current_sweep(document):
-    """Expand validated current conditions without modifying the input."""
+    """Compatibility entry point expanding current or CV-duration sweeps."""
     _mapping(
-        document,
-        "config",
+        document, "config",
         required=(
             "schema_version", "experiment", "dut", "instrument",
-            "acquisition", "charge", "rest", "discharge", "output",
-            "sweep",
+            "acquisition", "charge", "rest", "discharge", "output", "sweep",
         ),
         optional=("execution",),
     )
     experiment = _mapping(
-        document["experiment"],
-        "experiment",
+        document["experiment"], "experiment",
         required=("type", "name", "cycles"),
     )
-    if experiment["type"] != "charge_current_sweep":
-        raise ValueError("Expected experiment.type=charge_current_sweep.")
-    sweep = _mapping(
-        document["sweep"],
-        "sweep",
-        required=("charge_current_a", "repeats", "initial_discharge"),
+    kind = experiment["type"]
+    if kind not in ("charge_current_sweep", "cv_hold_sweep"):
+        raise ValueError("Expected charge_current_sweep or cv_hold_sweep.")
+    is_hold = kind == "cv_hold_sweep"
+    required = (
+        ("repeats", "initial_discharge")
+        if is_hold else ("charge_current_a", "repeats", "initial_discharge")
     )
+    sweep = _mapping(document["sweep"], "sweep", required=required)
     if sweep["initial_discharge"] is not True:
         raise ValueError("sweep.initial_discharge must be true.")
-
-    values = sweep["charge_current_a"]
+    if is_hold:
+        charge = document["charge"]
+        if not isinstance(charge, dict) or not isinstance(charge.get("termination"), dict):
+            raise ValueError("CV hold sweep requires charge.termination.")
+        termination = charge["termination"]
+        if "cv_hold" in charge:
+            raise ValueError("Use only charge.termination for CV hold selection.")
+        if termination.get("mode") not in ("from_cv_entry", "after_current_threshold"):
+            raise ValueError(
+                "CV hold sweep requires from_cv_entry or after_current_threshold."
+            )
+        values = termination.get("hold_time_s")
+        value_path = "charge.termination.hold_time_s"
+    else:
+        values = sweep["charge_current_a"]
+        value_path = "sweep.charge_current_a"
     if not isinstance(values, list) or not values:
-        raise ValueError("sweep.charge_current_a must be a nonempty list.")
+        raise ValueError(f"{value_path} must be a nonempty list.")
     repeats = sweep["repeats"]
     if type(repeats) is not int or repeats < 1:
         raise ValueError("sweep.repeats must be a positive integer.")
     if len(values) * repeats > 1000:
-        raise ValueError(
-            "A sweep may contain at most 1000 condition/repeat entries."
-        )
-    currents = [
-        _number(value, f"sweep.charge_current_a[{index}]")
+        raise ValueError("A sweep may contain at most 1000 condition/repeat entries.")
+    values = [
+        _number(value, f"{value_path}[{index}]")
         for index, value in enumerate(values)
     ]
-    if len(set(currents)) != len(currents):
+    if len(set(values)) != len(values):
         raise ValueError(
+            "Duplicate CV-hold durations; use sweep.repeats instead."
+            if is_hold else
             "Duplicate charging-current values; use sweep.repeats instead."
         )
     base = deepcopy(document)
     del base["sweep"]
     base["experiment"]["type"] = "preconditioning"
     conditions = []
-    for index, current in enumerate(currents, 1):
+    for index, value in enumerate(values, 1):
         condition = deepcopy(base)
-        condition["charge"]["current"] = {"current_a": current}
+        if is_hold:
+            condition["charge"]["termination"]["hold_time_s"] = value
+        else:
+            condition["charge"]["current"] = {"current_a": value}
         try:
             validated = validate_config(condition)
         except ValueError as error:
+            unit = "s" if is_hold else "A"
             raise ValueError(
-                f"Sweep condition {index} ({current:g} A): {error}"
+                f"Sweep condition {index} ({value:g} {unit}): {error}"
             ) from error
+        current = validated["resolved_currents"]["charge_current_a"]
         for repeat in range(1, repeats + 1):
-            conditions.append({
+            entry = {
                 "condition_id": f"condition_{index:04d}_repeat_{repeat:04d}",
                 "condition_index": index,
                 "repeat_index": repeat,
                 "charge_current_a": current,
                 "config": deepcopy(validated["config"]),
-            })
+            }
+            if is_hold:
+                entry.update(
+                    cv_hold_time_s=value,
+                    cv_hold_mode=condition["charge"]["termination"]["mode"],
+                )
+            conditions.append(entry)
     return {
         "config": deepcopy(document),
         "condition_count": len(conditions),
@@ -119,16 +144,24 @@ def build_charge_current_sweep_plan(document, *, maximum_records=100000):
 
     plan = {
         "sweep_plan_schema_version": 1,
-        "experiment_type": "charge_current_sweep",
+        "experiment_type": document["experiment"]["type"],
         "experiment_name": document["experiment"]["name"],
         "state": "preview",
         "execution_enabled": False,
         "execution_available": True,
         "will_connect": False,
         "will_enable_output": False,
-        "parameter": "charge.current.current_a",
-        "unit": "A",
-        "ordering": "initial_discharge_then_supplied_current_order_then_repeat",
+        "parameter": (
+            "charge.termination.hold_time_s"
+            if document["experiment"]["type"] == "cv_hold_sweep"
+            else "charge.current.current_a"
+        ),
+        "unit": "s" if document["experiment"]["type"] == "cv_hold_sweep" else "A",
+        "ordering": (
+            "initial_discharge_then_supplied_hold_time_order_then_repeat"
+            if document["experiment"]["type"] == "cv_hold_sweep"
+            else "initial_discharge_then_supplied_current_order_then_repeat"
+        ),
         "repeats_per_current": document["sweep"]["repeats"],
         "condition_count": len(conditions),
         "condition_phase_count": sum(
@@ -292,6 +325,11 @@ def execute_charge_current_sweep(document, *, sweep_id):
             "charge_current_a": (
                 None if initial_only else condition["charge_current_a"]
             ),
+            **{
+                key: condition[key]
+                for key in ("cv_hold_time_s", "cv_hold_mode")
+                if key in condition
+            },
             "configuration": configuration,
             "execution_settings": deepcopy(condition["execution_settings"]),
             "experiment_directory": str(directory / stage_id),
@@ -424,10 +462,12 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
         raise ValueError("Exactly two sweep profiles are required.")
     snapshots = deepcopy(list(documents))
     if any(
-        document.get("experiment", {}).get("type") != "charge_current_sweep"
+        document.get("experiment", {}).get("type") not in ('charge_current_sweep', 'cv_hold_sweep')
         for document in snapshots
     ):
         raise ValueError("Both profiles must be charging-current sweeps.")
+    if len({document["experiment"]["type"] for document in snapshots}) != 1:
+        raise ValueError("Both channels must use the same sweep experiment type.")
     sweeps = [
         build_charge_current_sweep_plan(
             document, maximum_records=maximum_records
@@ -485,6 +525,9 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
             item["sweep_charge_current_a"] = (
                 None if condition is None else condition["charge_current_a"]
             )
+            if condition is not None and "cv_hold_time_s" in condition:
+                item["sweep_cv_hold_time_s"] = condition["cv_hold_time_s"]
+                item["sweep_cv_hold_mode"] = condition["cv_hold_mode"]
             phases.append(item)
         for phase in sweep["initial_discharge"]["phases"]:
             append_phase(phase, "initial_discharge")
@@ -501,13 +544,17 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
             for condition in sweep["conditions"]
         )
         preview["acquisition_plan"].update(
-            experiment_type="charge_current_sweep",
+            experiment_type=document["experiment"]["type"],
             configuration=deepcopy(document),
             phase_count=len(phases),
             phases=phases,
         )
     plan.update(
-        experiment_type="dual_charge_current_sweep",
+        experiment_type=(
+            "dual_cv_hold_sweep"
+            if snapshots[0]["experiment"]["type"] == "cv_hold_sweep"
+            else "dual_charge_current_sweep"
+        ),
         live_backend_available=True,
         execution_available=True,
         initial_preparation_barrier=True,

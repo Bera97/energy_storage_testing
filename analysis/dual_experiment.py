@@ -235,7 +235,7 @@ def analyze_batch(directory, output_directory):
         )
 
     document = _read_json(source / "dual_experiment.json")
-    if document["plan"].get("experiment_type") == "dual_charge_current_sweep":
+    if document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep'):
         return export_dual_sweep(source, destination)
     destination.mkdir(parents=True)
 
@@ -423,7 +423,7 @@ def export_dual_sweep(directory, output_directory):
         raise FileExistsError(f"Output directory already exists: {destination}")
     document = _read_json(source / "dual_experiment.json")
     _require_batch(
-        document["plan"].get("experiment_type") == "dual_charge_current_sweep",
+        document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep'),
         "Expected a dual charging-current sweep.",
     )
     validation = check_batch(source)
@@ -437,6 +437,10 @@ def export_dual_sweep(directory, output_directory):
     )
     destination.mkdir(parents=True)
     exporter = import_module("analysis.export_recorded_analysis")
+    is_hold_sweep = (
+        document["plan"]["experiment_type"] == "dual_cv_hold_sweep"
+    )
+    extra_fields = ("cv_hold_mode", "cv_hold_time_s") if is_hold_sweep else ()
     phases = []
     cycles = []
     groups = []
@@ -481,6 +485,9 @@ def export_dual_sweep(directory, output_directory):
                 "warning_count": len(result["warnings"]),
                 "warnings": list(result["warnings"]),
             }
+            if "sweep_cv_hold_time_s" in phase:
+                row["cv_hold_time_s"] = phase["sweep_cv_hold_time_s"]
+                row["cv_hold_mode"] = phase["sweep_cv_hold_mode"]
             phases.append(row)
             if phase["sweep_stage_id"] != "initial_discharge":
                 condition_rows.setdefault(
@@ -505,21 +512,23 @@ def export_dual_sweep(directory, output_directory):
         destination / "summary.csv",
         (
             "channel", "specimen_id", "stage_id", "condition_index",
-            "repeat_index", "charge_current_a", "analysis_directory", *CSV_FIELDS,
+            "repeat_index", "charge_current_a", "analysis_directory", *CSV_FIELDS, *extra_fields,
         ),
         phases,
     )
     _write_sweep_csv(
         destination / "cycle_comparison.csv",
-        ("channel", "specimen_id", *SWEEP_CYCLE_FIELDS),
+        ("channel", "specimen_id", *SWEEP_CYCLE_FIELDS, *extra_fields),
         cycles,
     )
     _write_sweep_csv(
-        destination / "current_summary.csv",
+        destination / (
+            "hold_time_summary.csv" if is_hold_sweep else "current_summary.csv"
+        ),
         (
             "channel", "specimen_id", "charge_current_a", "metric", "unit",
             "condition_count", "cycle_count", "observation_count", "mean",
-            "sample_stddev", "minimum", "maximum",
+            "sample_stddev", "minimum", "maximum", *extra_fields,
         ),
         groups,
     )
@@ -545,7 +554,7 @@ def export_dual_sweep(directory, output_directory):
         ],
         "phases": phases,
         "cycles": cycles,
-        "current_summary": groups,
+        ("hold_time_summary" if is_hold_sweep else "current_summary"): groups,
     }
     _write_json(destination / "summary.json", report)
     with (destination / "ANALYSIS_COMPLETE").open("x", encoding="utf-8") as handle:

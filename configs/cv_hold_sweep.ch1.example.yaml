@@ -1,0 +1,137 @@
+# Charge termination is configured only under charge.termination.
+# hold_time_s is interpreted according to termination.mode.
+# maximum_duration_s and maximum_cv_duration_s are failure timeouts.
+# Review specimen, wiring, ratings, and settings before hardware use.
+# Supported schema version: 1.
+schema_version: 1
+experiment:
+  # Options: preconditioning | charge_current_sweep | cv_hold_sweep.
+  # Choose the CV-hold policy under charge.termination.mode, not here.
+  # Both sweep types additionally require the sweep section.
+  type: cv_hold_sweep
+  name: cv_hold_duration_sweep
+  # Positive integer: complete charge/rest/discharge/rest cycles per condition.
+  # This is separate from sweep.repeats.
+  cycles: 1
+dut:
+  name: Tecate 40F LIC
+  # Free-text specimen ID; use different IDs for the two channels.
+  # Keep preview placeholders until the connected specimens are identified.
+  specimen_id: REPLACE_PREVIEW_CV_CH1
+  # Options: battery | edlc | lic.
+  # chemistry is a separate free-text description.
+  category: lic
+  chemistry: LIC
+  manufacturer: Tecate Group
+  model: TPLCE-3R8/40MR8X20
+  # Positive nominal capacity in Ah, or null when not specified.
+  # A positive explicit value is required when selecting charge.current.c_rate.
+  nominal_capacity_ah: 0.03556
+  # Positive nominal capacitance in F, or null when not specified.
+  # For an assembly, describe the actual assembly rather than one component.
+  nominal_capacitance_f: 80.0
+  ratings:
+    minimum_voltage_v: 2.19
+    maximum_voltage_v: 3.81
+    maximum_continuous_charge_current_a: 0.4
+    maximum_continuous_discharge_current_a: 0.4
+instrument:
+  visa_address: USB0::0x2A8D::0x9201::MY61391173::0::INSTR
+  # Options: 1 | 2.
+  # A dual-channel invocation requires one profile for each channel.
+  channel: 1
+  # Options: true | false. Match the setting to the actual sensing connections.
+  # This configuration value alone does not verify physical wiring.
+  four_wire: true
+  # Positive numeric integration setting in power-line cycles.
+  # A syntactically valid value is not independent instrument qualification.
+  nplc: 1.0
+acquisition:
+  # Positive sample interval in seconds.
+  # The phase duration and interval must fit the finite acquisition budget.
+  interval_s: 0.2
+  # Maximum permitted gap between recorded samples, in seconds.
+  # Must be at least interval_s.
+  # For current_threshold termination it must be shorter than hold_time_s.
+  maximum_sample_gap_s: 0.5
+charge:
+  # Currently supported value: cc_cv.
+  # Select the stopping policy under charge.termination.mode.
+  mode: cc_cv
+  # Choose one non-null selection: current_a | current_fraction | c_rate.
+  # Example forms: {current_a: 0.2}, {current_fraction: 0.5}, or {c_rate: 0.1}.
+  # Legacy basis + factor is also accepted; do not mix the two syntaxes.
+  # In a charge_current_sweep, sweep.charge_current_a selects each condition.
+  current:
+    # Positive absolute charging current in A, within supplied DUT ratings.
+    # Alternative keys: current_fraction or c_rate; choose one non-null selection.
+    current_a: 0.2
+    # Fraction of the supplied maximum continuous charging current: > 0 and <= 1.
+    # Alternative keys: current_a or c_rate; choose one non-null selection.
+    current_fraction: null
+    # Positive C-rate, using the explicitly supplied nominal_capacity_ah.
+    # Alternative keys: current_a or current_fraction; choose one non-null selection.
+    c_rate: null
+  target_voltage_v: 3.8
+  # Positive voltage tolerance in V used for CV classification.
+  # It must be below target_voltage_v; it is not independent protection.
+  cv_voltage_tolerance_v: 0.05
+  termination:
+    # Options: current_threshold | from_cv_entry | after_current_threshold.
+    # current_threshold: require consecutive qualifying CV/current observations.
+    # from_cv_entry: time from the first confirmed-CV observation.
+    # after_current_threshold: time from the first valid strictly below-threshold CV sample.
+    # For the two timed modes, loss of confirmed CV after timer start is a failure.
+    mode: from_cv_entry
+    # Options: rated_max_charge_current | configured_charge_current.
+    # The threshold is current_factor multiplied by this reference current.
+    # after_current_threshold requires configured_charge_current.
+    current_reference: configured_charge_current
+    # Positive fraction; the resolved threshold must be below the charging current.
+    # In from_cv_entry mode this is diagnostic, not the stopping condition.
+    current_factor: 0.1
+    # Seconds, interpreted according to mode; this is the only termination timer.
+    # For cv_hold_sweep use a nonempty list; otherwise use one number.
+    # current_threshold: consecutive qualifying CV/current time.
+    # from_cv_entry: total holding time from first confirmed CV.
+    # after_current_threshold: added time from the first strictly below-threshold CV sample.
+    # The selected holding duration must be shorter than maximum_cv_duration_s.
+    hold_time_s: [15, 30, 60]
+  # Positive overall charge timeout in seconds; reaching it is a failure.
+  # Includes the charging phase, not just the selected hold.
+  maximum_duration_s: 3600
+  # Positive protective CV timeout in seconds, measured from first observed CV.
+  # Must not exceed maximum_duration_s; reaching it is a failure.
+  # This does not select a successful CV-hold duration.
+  maximum_cv_duration_s: 1800
+rest:
+  # Positive rest duration in seconds after each completed charge.
+  after_charge_s: 5
+  # Positive rest duration in seconds after discharge, including initial preparation.
+  after_discharge_s: 30
+discharge:
+  # Currently supported value: constant_current.
+  # Constant-power and pulsed discharge are not enabled by changing this value.
+  mode: constant_current
+  current:
+    # Currently supported value: rated_max_discharge_fraction.
+    basis: rated_max_discharge_fraction
+    # Fraction of supplied maximum continuous discharge current: > 0 and <= 1.
+    factor: 1
+  cutoff_voltage_v: 2.2
+  # Positive discharge timeout in seconds; reaching it is a failure.
+  maximum_duration_s: 3600
+output:
+  root_directory: runs
+  # Use 1-50 ASCII letters, digits, underscores, or hyphens; no spaces or slashes.
+  # The run folder uses a timestamp followed by this suffix.
+  # For dual execution, the first supplied profile provides the suffix.
+  file_name: cv_hold_sweep
+  analysis_directory: analysis_outputs
+sweep:
+  # Positive integer: repetitions per sweep value, in supplied-value order.
+  # Number of sweep values multiplied by repeats must not exceed 1000.
+  repeats: 1
+  # Currently required value: true. false is not supported.
+  # Run initial discharge and its rest once before the first condition.
+  initial_discharge: true

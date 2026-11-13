@@ -430,3 +430,46 @@ python -m smu --config configs/cv_hold.ch1.example.yaml --config configs/cv_hold
 ```
 The example specimen IDs are preview-only placeholders. Offline tests and preview
 do not establish physical ratings, wiring, or hardware readiness.
+### CV-hold duration sweeps
+Use experiment.type: cv_hold_sweep. The duration list is configured only at
+charge.termination.hold_time_s; do not add a second duration list under sweep.
+```yaml
+experiment:
+  type: cv_hold_sweep
+  name: cv_hold_duration_comparison
+  cycles: 1
+charge:
+  # Retain the other required charge settings.
+  termination:
+    mode: from_cv_entry
+    current_reference: configured_charge_current
+    current_factor: 0.1
+    hold_time_s:[15][30][60]
+sweep:
+  repeats: 1
+  initial_discharge: true
+```
+The same structure supports after_current_threshold. current_threshold is not
+a timed-CV sweep mode. Each duration must be positive, distinct, and shorter
+than the protective CV timeout. All conditions validate before execution.
+The supplied charging current remains fixed; only the selected holding time
+changes. Repeats are grouped under each supplied duration.
+Single-channel execution uses one profile. Dual execution uses two CV-hold
+sweep profiles and one shared instrument session. Channels can select different
+timed policies, duration lists, repeats, and cycles. Mixed sweep experiment
+types in one dual invocation are rejected. Both channels complete initial
+preparation before either charges; subsequent progression is independent.
+```powershell
+python -m smu --config configs/cv_hold_sweep.ch1.example.yaml --preview
+python -m smu --config configs/cv_hold_sweep.ch1.example.yaml --config configs/cv_hold_sweep.ch2.example.yaml --preview
+```
+The new examples retain preview-only specimen placeholders. Their values are
+not independently qualified physical operating limits.
+Analysis includes cv_hold_mode and cv_hold_time_s in per-condition comparisons.
+hold_time_summary.csv groups observations by selected holding duration and
+policy, separately for each dual channel/specimen. It does not pool different
+durations merely because their charging currents match. Console summaries keep
+mAh, C, Wh, and J and additionally show Hold(s).
+Existing charging-current sweep interfaces and output names remain supported.
+Historical recordings are not modified. Physical CV-hold validation is separate
+from the offline integration tests.
