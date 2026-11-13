@@ -75,7 +75,9 @@ def _error_object(value):
     )
 
 
-def validate_experiment(directory, *, phase_root=None):
+def validate_experiment(
+    directory, *, phase_root=None, initial_discharge_only=False
+):
     """Return a JSON-compatible validation report.
 
     Valid raised/running evidence is not a completed experiment.
@@ -84,6 +86,8 @@ def validate_experiment(directory, *, phase_root=None):
     Files are read sequentially, not as a filesystem snapshot.
     Do not modify recordings concurrently with validation.
     """
+    if type(initial_discharge_only) is not bool:
+        raise ValueError("initial_discharge_only must be a boolean.")
     directory = Path(directory)
 
     result = {
@@ -152,8 +156,26 @@ def validate_experiment(directory, *, phase_root=None):
     )
 
     plan_errors = []
-
-    if len(phases) % 4 != 0:
+    if initial_discharge_only:
+        from experiments.preconditioning_runner import _execution_plan
+        try:
+            configuration = document["metadata"]["configuration"]
+            expected_plan = _execution_plan(
+                configuration, initial_discharge_only=True
+            )
+            if plan != expected_plan:
+                plan_errors.append(
+                    "Preparation plan differs from canonical discharge/rest."
+                )
+        except (KeyError, TypeError, ValueError) as error:
+            plan_errors.append(
+                f"Cannot reconstruct preparation plan: {error}"
+            )
+        if len(phases) != 2:
+            plan_errors.append(
+                "Initial preparation must contain exactly two phases."
+            )
+    elif len(phases) % 4 != 0:
         plan_errors.append(
             "Plan does not contain complete four-phase cycles."
         )
@@ -167,10 +189,14 @@ def validate_experiment(directory, *, phase_root=None):
 
         if (
             type(phase.get("phase_index")) is not int
-            or phase["phase_index"] != index
+            or phase["phase_index"] != (
+                index + 2 if initial_discharge_only else index
+            )
             or type(phase.get("cycle")) is not int
             or phase["cycle"] != index // 4 + 1
-            or phase.get("type") != expected_types[index % 4]
+            or phase.get("type") != expected_types[
+                (index + (2 if initial_discharge_only else 0)) % 4
+            ]
         ):
             plan_errors.append(
                 f"Plan phase {index} has inconsistent order or identity."

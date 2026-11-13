@@ -17,7 +17,7 @@ from experiments.config import (
     load_config,
     require_charge_monitoring_settings,
 )
-from experiments.preconditioning import build_plan
+from experiments.preconditioning_runner import _execution_plan
 from experiments.preconditioning_runner import run_preconditioning
 from experiments.recorded_phase_executor import RecordedPhaseExecutor
 from experiments.recorded_preconditioning_backend import (
@@ -130,14 +130,18 @@ def execute_live(
     maximum_records=100000,
     timeout_ms=5000,
     visa_library=None,
+    initial_discharge_only=False,
 ):
     """Return (runner_report, experiment_directory).
 
     Reserves the manifest before instrument construction/connection.
     Final shutdown and session close precede experiment finalization.
 
-    This function executes the configured charge/rest/discharge/rest
-    sequence. It is not a commissioning diagnostic.
+    By default this executes the configured charge/rest/discharge/rest
+    sequence. initial_discharge_only=True instead executes just the first
+    canonical discharge and its following rest, with the same recording,
+    identity, shutdown, and session-close boundaries.
+    It is not a commissioning diagnostic.
     """
     preview = execution_preview(
         document,
@@ -194,7 +198,9 @@ def execute_live(
     if type(timeout_ms) is not int or timeout_ms <= 0:
         raise ValueError("--timeout-ms must be a positive integer.")
 
-    plan = build_plan(config)
+    plan = _execution_plan(
+        config, initial_discharge_only=initial_discharge_only
+    )
 
     experiment = PreconditioningExperiment(
         config["output"]["root_directory"],
@@ -278,9 +284,14 @@ def execute_live(
             experiment,
         )
 
+        runner_options = (
+            {"initial_discharge_only": True}
+            if initial_discharge_only else {}
+        )
         report = run_preconditioning(
             config,
             progress_backend,
+            **runner_options,
         )
 
     except BaseException as error:

@@ -104,7 +104,22 @@ def _run_phase(backend, phase):
     return result.stop_reason
 
 
-def run_preconditioning(document, backend: PreconditioningBackend):
+def _execution_plan(document, *, initial_discharge_only=False):
+    """Build the canonical full plan or its first discharge/rest preparation."""
+    if type(initial_discharge_only) is not bool:
+        raise ValueError("initial_discharge_only must be a boolean.")
+    plan = build_plan(document)
+    if initial_discharge_only:
+        plan["phases"] = deepcopy(plan["phases"][2:4])
+        plan["phase_count"] = 2
+        plan["execution_scope"] = "initial_discharge_only"
+    return plan
+def run_preconditioning(
+    document,
+    backend: PreconditioningBackend,
+    *,
+    initial_discharge_only=False,
+):
     """Run a validated plan using the supplied backend.
 
     No real hardware backend is supplied by this module.
@@ -119,7 +134,9 @@ def run_preconditioning(document, backend: PreconditioningBackend):
 
     Invalid configuration is rejected before any backend call.
     """
-    plan = build_plan(document)
+    plan = _execution_plan(
+        document, initial_discharge_only=initial_discharge_only
+    )
 
     report = {
         "experiment_report_schema_version": 1,

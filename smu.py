@@ -167,13 +167,18 @@ def _unified_main(arguments):
         _unified_config_paths(documents, paths)
         if any(doc["experiment"]["type"] == "charge_current_sweep" for doc in documents):
             if len(documents) != 1:
-                raise ValueError("Charging-current sweep preview accepts exactly one profile.")
-            if parsed.execute or parsed.analyze is not None:
+                raise ValueError("Charging-current sweeps accept exactly one profile.")
+            if parsed.analyze is not None:
                 raise ValueError(
-                    "Charging-current sweeps are preview-only in this increment; "
-                    "execution and sweep analysis are not implemented."
+                    "Sweep analysis is not implemented; use --execute "
+                    "without --analyze to record a sweep."
                 )
             planner = import_module("experiments.sweeps")
+            if parsed.execute:
+                return planner.run_configured_sweep(
+                    documents[0],
+                    sweep_id=_unified_run_name(documents[0]),
+                )
             plan = planner.build_charge_current_sweep_plan(documents[0])
             print(json.dumps(plan, indent=2, allow_nan=False))
             return 0

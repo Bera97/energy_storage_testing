@@ -281,5 +281,38 @@ pretending it is a complete preconditioning cycle. Total phase count
 includes these two additional phases.
 Execution must stop if initial discharge or its rest fails. Planning
 does not establish physical readiness or guarantee identical specimen
-state across conditions. Sweep hardware execution remains blocked until
-the sequential executor and its recording/failure handling are implemented.
+state across conditions. Sweep execution is available through explicit `--execute`. Combined sweep
+analysis remains unsupported; preview itself never connects to hardware.
+### Sequential charging-current sweep execution
+Current support: preview and explicit hardware execution. Combined sweep
+analysis, automatic retry, and resume are not implemented.
+Preview:
+```powershell
+python -m smu --config configs/charge_current_sweep.example.yaml --preview
+```
+Execute only after reviewing and replacing example profile values:
+```powershell
+python -m smu --config YOUR_REVIEWED_SWEEP_PROFILE.yaml --execute
+```
+A sweep reserves `<output.root_directory>/<timestamp>_<file_name>/sweep.json`
+before any connection. Its `initial_discharge` folder records the initial
+discharge and post-discharge rest. Condition folders then record complete
+preconditioning sequences in supplied-current order, with repeats grouped
+under each current.
+Each stage has its own identity-verified instrument session. The existing
+live executor attempts shutdown and closes that session before finalizing
+the stage. Persisted recordings, the configured plan, and session evidence
+are checked before the next stage starts. Initial preparation uses only
+canonical discharge/rest phases; it does not perform a preceding charge.
+A failure or interruption stops the sweep. Completed stages remain recorded;
+the failed stage is marked raised and subsequent stages not_started. A
+failure to persist progress also prevents further execution. There is no
+automatic recovery or overwrite of an existing sweep directory.
+The authoritative sweep result is the state in sweep.json. A running
+manifest is not completion evidence, including after process termination.
+Atomic metadata replacement does not guarantee power-loss durability.
+Recorded shutdown evidence is not independent proof of electrical isolation.
+`--execute --analyze` and sweep `--analyze RUN_NAME` are rejected before
+hardware execution. Individual condition folders remain ordinary
+preconditioning recordings; the initial discharge requires explicit
+preparation-scope validation. Do not modify recordings during validation.
