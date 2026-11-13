@@ -757,3 +757,61 @@ def test_combined_mode_requires_analysis_directory_before_execution(
     monkeypatch.setattr(sweeps, "run_configured_sweep", forbidden)
     assert smu.main(["--config", str(path), "--execute", "--analyze"]) == 1
     assert "analysis_directory" in capsys.readouterr().err
+def test_combined_analysis_paths_resolve_from_output_root(
+    completed_recorded_sweep, tmp_path
+):
+    import csv
+    from analysis.export_experiment import export_sweep
+    _, directory, _ = completed_recorded_sweep
+    destination = tmp_path / "provenance_analysis"
+    report = export_sweep(directory, destination)
+    references = []
+    for row in report["phases"]:
+        relative = Path(row["analysis_directory"])
+        assert not relative.is_absolute()
+        assert relative.parts[0] == row["stage_id"]
+        assert (destination / relative / "summary.json").is_file()
+        assert (destination / relative / "analysis.csv").is_file()
+        references.append(relative.as_posix())
+    assert len(references) == len(set(references))
+    with (destination / "summary.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        rows = list(csv.DictReader(handle))
+    assert [row["analysis_directory"] for row in rows] == references
+    for row in rows:
+        assert (
+            destination / row["analysis_directory"] / "summary.json"
+        ).is_file()
+@pytest.mark.parametrize(
+    "field", ["metadata", "session_outcome", "experiment_report"]
+)
+@pytest.mark.parametrize("value", [None, []])
+def test_malformed_stage_objects_return_validation_errors(
+    completed_recorded_sweep, field, value
+):
+    from analysis.export_experiment import validate_sweep
+    _, directory, manifest = completed_recorded_sweep
+    stage = manifest["stages"][1]
+    path = Path(stage["experiment_directory"]) / "experiment.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document[field] = value
+    path.write_text(json.dumps(document), encoding="utf-8")
+    result = validate_sweep(directory)
+    assert result["valid"] is False
+    assert result["errors"]
+    assert "malformed evidence objects" in result["errors"][0]
+def test_malformed_stage_cannot_create_completed_analysis(
+    completed_recorded_sweep, tmp_path
+):
+    from analysis.export_experiment import export_sweep
+    _, directory, manifest = completed_recorded_sweep
+    stage = manifest["stages"][1]
+    path = Path(stage["experiment_directory"]) / "experiment.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["session_outcome"] = None
+    path.write_text(json.dumps(document), encoding="utf-8")
+    destination = tmp_path / "invalid_stage_analysis"
+    with pytest.raises(ValueError, match="malformed evidence objects"):
+        export_sweep(directory, destination)
+    assert not destination.exists()

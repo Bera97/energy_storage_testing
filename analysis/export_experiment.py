@@ -462,6 +462,16 @@ def validate_sweep(directory):
                 f"Stage lacks successful persisted validation: {stage_id}.",
             )
             stage_document = _read_json(reference / "experiment.json")
+            _require_sweep(
+                isinstance(stage_document, dict)
+                and all(
+                    isinstance(stage_document.get(field), dict)
+                    for field in (
+                        "metadata", "session_outcome", "experiment_report"
+                    )
+                ),
+                f"Stage manifest has malformed evidence objects: {stage_id}.",
+            )
             checked = _check_sweep_stage(
                 reference,
                 configuration,
@@ -643,6 +653,9 @@ def export_sweep(directory, output_directory):
             "repeat_index": stage["repeat_index"],
             "charge_current_a": stage["charge_current_a"],
             **row,
+            "analysis_directory": (
+                Path(stage["stage_id"]) / row["analysis_directory"]
+            ).as_posix(),
         } for row in report["phases"])
         if stage["kind"] == "condition":
             cycle_rows.extend(_sweep_cycle_rows(stage, report["phases"]))
@@ -651,7 +664,7 @@ def export_sweep(directory, output_directory):
         destination / "summary.csv",
         (
             "stage_id", "stage_kind", "condition_index", "repeat_index",
-            "charge_current_a", *CSV_FIELDS,
+            "charge_current_a", "analysis_directory", *CSV_FIELDS,
         ),
         phase_rows,
     )
