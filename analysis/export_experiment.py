@@ -731,19 +731,45 @@ def analyze_sweep(directory, output_directory):
             file=sys.stderr,
         )
         return 1
+    _print_sweep_summary(report, output_directory)
+    return 0
+def _print_sweep_summary(report, output_directory):
+    """Present existing cycle results; no acquisition or file modification."""
     print(f"Sweep analysis: {Path(output_directory).resolve()}")
     print(
-        f"{'Condition':<29} {'Cycle':>5} {'I(A)':>8} "
-        f"{'Charge span(s)':>15} {'Charge E+(Wh)':>15} {'Discharge E-(Wh)':>18}"
+        "Q retains its measurement sign. E_mag is the recorded directional "
+        "energy magnitude: charge E+ or discharge E-."
+    )
+    print(
+        "I_chg identifies the charging-current condition; "
+        "it is not the discharge-current setting."
+    )
+    print(
+        f"{'Condition':<29} {'Cycle':>5} {'I_chg(A)':>9} "
+        f"{'Phase':<9} {'Span(s)':>10} "
+        f"{'Q(mAh)':>12} {'Q(C)':>12} "
+        f"{'E_mag(Wh)':>12} {'E_mag(J)':>12}"
     )
     for row in report["cycles"]:
-        print(
-            f"{row['condition_id']:<29} {row['cycle']:>5} "
-            f"{row['charge_current_a']:>8.5g} "
-            f"{row['charge_recorded_span_s']:>15.6g} "
-            f"{row['charge_positive_energy_wh']:>15.6g} "
-            f"{row['discharge_negative_energy_wh']:>18.6g}"
-        )
+        for phase, energy_field in (
+            ("charge", "charge_positive_energy_wh"),
+            ("discharge", "discharge_negative_energy_wh"),
+        ):
+            charge_mah = row[f"{phase}_signed_charge_mah"]
+            charge_c = charge_mah * 3.6
+            energy_wh = row[energy_field]
+            energy_j = energy_wh * 3600.0
+            span = row[f"{phase}_recorded_span_s"]
+            print(
+                f"{row['condition_id']:<29} "
+                f"{row['cycle']:>5} "
+                f"{row['charge_current_a']:>9.5g} "
+                f"{phase:<9} "
+                f"{span:>10.6g} "
+                f"{charge_mah:>12.6g} "
+                f"{charge_c:>12.6g} "
+                f"{energy_wh:>12.6g} "
+                f"{energy_j:>12.6g}"
+            )
     for warning in report["warnings"]:
         print(f"WARNING: {warning}", file=sys.stderr)
-    return 0

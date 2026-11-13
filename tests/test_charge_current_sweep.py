@@ -815,3 +815,54 @@ def test_malformed_stage_cannot_create_completed_analysis(
     with pytest.raises(ValueError, match="malformed evidence objects"):
         export_sweep(directory, destination)
     assert not destination.exists()
+def test_sweep_console_summary_shows_charge_and_energy_units(capsys):
+    from analysis.export_experiment import _print_sweep_summary
+    report = {
+        "cycles": [{
+            "condition_id": "condition_test",
+            "cycle": 1,
+            "charge_current_a": 0.2,
+            "charge_recorded_span_s": 10.0,
+            "discharge_recorded_span_s": 8.0,
+            "charge_signed_charge_mah": 2.0,
+            "discharge_signed_charge_mah": -1.0,
+            "charge_positive_energy_wh": 0.1,
+            "discharge_negative_energy_wh": 0.05,
+        }],
+        "warnings": ["synthetic warning"],
+    }
+    original = deepcopy(report)
+    _print_sweep_summary(report, "unused_output_path")
+    captured = capsys.readouterr()
+    for heading in ("Q(mAh)", "Q(C)", "E_mag(Wh)", "E_mag(J)"):
+        assert heading in captured.out
+    rows = [
+        line.split() for line in captured.out.splitlines()
+        if line.startswith("condition_test")
+    ]
+    assert len(rows) == 2
+    assert rows[0][3] == "charge"
+    assert rows[0][5:] == ["2", "7.2", "0.1", "360"]
+    assert rows[1][3] == "discharge"
+    assert rows[1][5:] == ["-1", "-3.6", "0.05", "180"]
+    assert "WARNING: synthetic warning" in captured.err
+    assert report == original
+def test_saved_sweep_summary_can_be_reprinted_without_export(
+    completed_recorded_sweep, tmp_path, monkeypatch, capsys
+):
+    import analysis.export_experiment as analysis
+    _, directory, _ = completed_recorded_sweep
+    destination = tmp_path / "unit_display_analysis"
+    analysis.export_sweep(directory, destination)
+    path = destination / "summary.json"
+    before = path.read_bytes()
+    report = json.loads(before)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Reprinting existing analysis attempted another export.")
+    monkeypatch.setattr(analysis, "export_sweep", forbidden)
+    analysis._print_sweep_summary(report, destination)
+    output = capsys.readouterr().out
+    assert "Q(mAh)" in output
+    assert "Q(C)" in output
+    assert "E_mag(J)" in output
+    assert path.read_bytes() == before
