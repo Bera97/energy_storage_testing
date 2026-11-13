@@ -1,4 +1,5 @@
 """Shared scheduling core and simulation entry point. Real backend: dual_live."""
+from experiments.charge_controller import charge_stop_reason
 import argparse
 from copy import deepcopy
 import json
@@ -67,7 +68,7 @@ class SimulatedInstrument:
         return {
             "state": "completed",
             "stop_reason": (
-                "cv_current_termination"
+                charge_stop_reason(phase)
                 if phase["type"] == "charge_cc_cv"
                 else "voltage_min"
             ),
@@ -184,7 +185,7 @@ def _run_backend(plan, backend, *, clock, sleep, poll_interval_s=0.05, simulatio
                 if result is None:
                     continue
                 phase = state['current_phase']
-                reason = 'cv_current_termination' if phase['type'] == 'charge_cc_cv' else 'voltage_min'
+                reason = charge_stop_reason(phase) if phase['type'] == 'charge_cc_cv' else 'voltage_min'
                 if not isinstance(result, dict) or result.get('state') != 'completed' or result.get('stop_reason') != reason:
                     raise RuntimeError(f'Channel {channel} returned an invalid endpoint.')
                 finish(state, timestamp, result)

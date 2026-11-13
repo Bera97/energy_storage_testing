@@ -4,6 +4,7 @@ No file operations, hardware communication, or experiment execution.
 """
 
 
+from experiments.charge_controller import charge_stop_reason
 def _error_object(value):
     return (
         isinstance(value, dict)
@@ -93,8 +94,10 @@ def check_runner_report(plan, report):
                 f"Runner phase {index} identity differs from plan."
             )
 
-        expected_reason = expected_reasons.get(
-            planned.get("type")
+        expected_reason = (
+            charge_stop_reason(planned)
+            if planned.get("type") == "charge_cc_cv"
+            else expected_reasons.get(planned.get("type"))
         )
         phase_state = outcome.get("state")
 

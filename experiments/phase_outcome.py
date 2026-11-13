@@ -6,6 +6,7 @@ These are consistency checks on supplied evidence, not proof of
 electrical safety, measurement accuracy, or scientific completeness.
 """
 
+from experiments.charge_controller import charge_stop_reason, validate_charge_policy_evidence
 from dataclasses import dataclass
 
 from experiments.preconditioning_runner import PhaseResult
@@ -43,7 +44,7 @@ def validate_transport_outcome(phase, report):
     expected = {
         "charge_cc_cv": (
             "charge",
-            "cv_current_termination",
+            charge_stop_reason(phase),
         ),
         "discharge_cc": (
             "discharge",
@@ -81,6 +82,13 @@ def validate_transport_outcome(phase, report):
             "Transport did not reach the required phase endpoint."
         )
 
+    if phase_type == "charge_cc_cv" and "cv_hold" in phase:
+        try:
+            validate_charge_policy_evidence(
+                phase, report.get("charge_policy_evidence")
+            )
+        except ValueError as error:
+            raise PhaseOutcomeError(str(error)) from error
     if report.get("shutdown_verified") is not True:
         raise PhaseOutcomeError(
             "Transport shutdown was not verified."

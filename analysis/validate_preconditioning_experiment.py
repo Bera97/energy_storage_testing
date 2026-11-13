@@ -16,6 +16,7 @@ independently verify physical shutdown, measurement accuracy,
 or file authenticity.
 """
 
+from experiments.charge_controller import charge_stop_reason
 import json
 from pathlib import Path
 
@@ -383,7 +384,7 @@ def validate_experiment(
             continue
 
         expected_reason = (
-            "cv_current_termination"
+            charge_stop_reason(planned)
             if planned["type"] == "charge_cc_cv"
             else "voltage_min"
         )

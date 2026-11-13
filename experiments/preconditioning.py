@@ -1,5 +1,6 @@
 """Hardware-free planning of cell preconditioning sequences."""
 
+from experiments.charge_controller import validate_cv_hold
 from copy import deepcopy
 
 from experiments.config import validate_config
@@ -65,6 +66,10 @@ def build_plan(document):
             ],
         }
 
+        if "cv_hold" in charge:
+            charge_settings["cv_hold"] = validate_cv_hold(
+                charge["cv_hold"], charge["maximum_cv_duration_s"]
+            )
         if monitoring is not None:
             charge_settings["monitoring"] = deepcopy(
                 monitoring

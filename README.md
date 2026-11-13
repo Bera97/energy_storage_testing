@@ -376,3 +376,49 @@ CV-hold requirement for future implementation: an additional hold after reaching
 the charging-current fraction starts immediately at the first valid strictly
 below-threshold current sample with CV confirmed, without a qualification delay.
 This dual-sweep change does not yet implement either new CV-hold policy.
+### Selectable timed CV-hold policies
+Both policies are supported by single- and dual-channel execution, recording,
+validation, and analysis. They also work inside existing charging-current sweeps.
+Omitting charge.cv_hold preserves normal current-threshold termination.
+```yaml
+charge:
+  # Retain the other required charge settings.
+  cv_hold:
+    mode: from_cv_entry
+    duration_s: 30
+```
+from_cv_entry starts at the first valid confirmed-CV observation. Reaching the
+current threshold does not terminate early, and threshold crossing is not
+required for successful timed completion.
+```yaml
+charge:
+  termination:
+    current_reference: configured_charge_current
+    # Retain current_factor and the existing hold_time_s field.
+  cv_hold:
+    mode: after_current_threshold
+    duration_s: 30
+```
+after_current_threshold starts immediately at the first valid strictly
+below-threshold current sample with CV confirmed. There is no qualification
+delay. The timer remains latched if current subsequently rises while CV remains
+confirmed. The existing termination.hold_time_s is not the additional timer.
+For both policies, loss of confirmed CV after the timed hold starts is a failure.
+This is a conservative sampled-observation rule, not proof of continuous physical
+CV between measurements. Sampling-gap checks and independent total-charge/CV
+timeouts remain enforced. Timeout/fault conditions take priority over completion.
+The hold duration must be positive and shorter than the protective CV timeout.
+Successful completion uses stop_reason=cv_hold_elapsed. Recordings retain
+charge_policy_evidence containing timer origin, elapsed duration, threshold,
+first CV, and first below-threshold observation where present. Validators check
+this evidence against the configured policy. Neither policy establishes physical
+ratings, wiring, protection, or continuous regulation independently.
+Preview the two deliberately non-executable example profiles:
+```powershell
+python -m smu --config configs/cv_hold.ch1.example.yaml --config configs/cv_hold.ch2.example.yaml --preview
+```
+These examples use one-condition charging-current sweeps to retain initial
+discharge/rest preparation. Their REPLACE_PREVIEW specimen IDs must be replaced
+and all physical settings reviewed before execution. No hardware qualification
+is implied. Automatic sweeps over a list of hold durations remain a separate
+planning extension.

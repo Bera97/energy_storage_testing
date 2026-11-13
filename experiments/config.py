@@ -1,5 +1,6 @@
 """Hardware-free loading and validation of experiment configuration."""
 
+from experiments.charge_controller import validate_cv_hold
 from copy import deepcopy
 from dataclasses import asdict
 import math
@@ -310,7 +311,7 @@ def validate_config(document):
             "maximum_duration_s",
             "maximum_cv_duration_s",
         ),
-        optional=("cv_voltage_tolerance_v",),
+        optional=("cv_voltage_tolerance_v", "cv_hold"),
     )
 
     if charge["mode"] != "cc_cv":
@@ -373,18 +374,28 @@ def validate_config(document):
             "maximum total charge duration."
         )
 
-    if hold_time >= cv_timeout:
+    if "cv_hold" not in charge and hold_time >= cv_timeout:
         raise ValueError(
             "Termination hold time must be below "
             "maximum CV duration."
         )
 
-    if maximum_gap is not None and maximum_gap >= hold_time:
+    if "cv_hold" not in charge and maximum_gap is not None and maximum_gap >= hold_time:
         raise ValueError(
             "acquisition.maximum_sample_gap_s must be "
             "below charge.termination.hold_time_s."
         )
 
+    if "cv_hold" in charge:
+        policy = validate_cv_hold(charge["cv_hold"], cv_timeout)
+        if (
+            policy["mode"] == "after_current_threshold"
+            and termination["current_reference"] != "configured_charge_current"
+        ):
+            raise ValueError(
+                "after_current_threshold requires "
+                "charge.termination.current_reference=configured_charge_current."
+            )
     rest = _mapping(
         config["rest"],
         "rest",

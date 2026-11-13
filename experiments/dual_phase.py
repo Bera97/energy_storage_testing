@@ -4,6 +4,7 @@ checked against the validated profile, not an independently qualified envelope.
 Any runtime phase fault attempts global stop before recording the failure.
 The owning coordinator must also abort/finalize the peer and close the session.
 """
+from experiments.charge_controller import charge_stop_reason, charge_policy_evidence
 from copy import deepcopy
 import math
 import time
@@ -369,7 +370,7 @@ class DualPhase:
                     and decision.stop_reason is not None
                 ):
                     expected = (
-                        "cv_current_termination"
+                        charge_stop_reason(self.phase)
                         if self.phase["type"] == "charge_cc_cv"
                         else "voltage_min"
                     )
@@ -440,6 +441,9 @@ class DualPhase:
                 ],
                 "measurement_timing": self.monitor.timing_evidence,
             }
+            evidence = charge_policy_evidence(self.monitor)
+            if evidence is not None:
+                report["charge_policy_evidence"] = evidence
             result, directory = self.run.finish_phase(
                 self.phase,
                 report,
