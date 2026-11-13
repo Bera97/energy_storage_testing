@@ -1,3 +1,5 @@
+# Execution defaults come from this profile's USB VISA serial and DUT ratings.
+# An execution section is optional and overrides those defaults.
 # Planning example copied from the existing profile.
 # Review actual specimen identity and all limits before any live use.
 schema_version: 1
@@ -56,9 +58,3 @@ output:
   # Run folder becomes <timestamp>_<file_name> inside root_directory.
   file_name: channel2
   analysis_directory: analysis_outputs
-
-# Reviewed execution settings; --execute is still required on the CLI.
-execution:
-  expected_serial: MY61391173
-  maximum_voltage_v: 5.55
-  maximum_current_a: 0.1

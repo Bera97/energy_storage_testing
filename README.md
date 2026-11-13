@@ -73,7 +73,14 @@ Repository profiles are specimen-specific examples, not universally safe templat
 Unknown fields and duplicate YAML keys are rejected.
 The `output` section carries all folder names: `root_directory` for recordings, `analysis_directory` for analysis exports, and `file_name` for the `<timestamp>_<file_name>` run folder used by the one-command interface.
 
-For the short execution commands, add this top-level section to each profile and review all values for your setup:
+Execution normally reads the expected serial from a concrete USB VISA address,
+the voltage ceiling from `dut.ratings.maximum_voltage_v`, and the current
+ceiling from the greater continuous charge/discharge current rating.
+No duplicate execution section or extra command-line flags are required.
+The connected instrument identity is still checked. These defaults use the
+supplied ratings; they do not independently verify physical safety.
+For non-USB resources, or to specify independent limits, this optional
+top-level section overrides the defaults:
 
 ```yaml
 execution:
@@ -82,7 +89,7 @@ execution:
   maximum_current_a: 0.1
 ```
 
-These are the current bench-example values, not universal limits. The serial is checked against the connected instrument; it is not inferred from the VISA address.
+These are the current bench-example values, not universal limits. An explicit expected serial overrides the serial derived from the USB VISA address; the resolved serial is checked against the connected instrument.
 The ceilings must cover the configured phase currents and discharge voltage compliance, which uses the supplied DUT maximum voltage and may exceed the charge target.
 They remain operator-supplied limits, not independent verification of specimen ratings or instrument capability.
 Both dual profiles must specify the same expected serial. Each profile has its own checked ceilings.

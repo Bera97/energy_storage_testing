@@ -142,6 +142,7 @@ def test_public_missing_execution_settings_prevents_execution(
     documents = _public_profiles(tmp_path, channel_count)
     for document in documents:
         del document["execution"]
+        document["instrument"]["visa_address"] = "TEST::INSTR"
     arguments = _write_public_profiles(tmp_path, documents)
     entered = _block_public_execution(monkeypatch)
     assert _public_status([*arguments, "--execute"]) in (1, 2)

@@ -1,3 +1,5 @@
+# Execution defaults come from this profile's USB VISA serial and DUT ratings.
+# An execution section is optional and overrides those defaults.
 schema_version: 1
 
 experiment:

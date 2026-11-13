@@ -409,10 +409,10 @@ def run_configured(
             experiment_id = _new_id("experiment")
         if execute:
             required = {
-                "--experiment-id": experiment_id,
-                "--expected-serial": expected_serial,
-                "--max-voltage-v": maximum_voltage_v,
-                "--max-current-a": maximum_current_a,
+                "experiment_id": experiment_id,
+                "execution.expected_serial": expected_serial,
+                "dut.ratings.maximum_voltage_v": maximum_voltage_v,
+                "dut.ratings continuous charge/discharge current limits": maximum_current_a,
             }
 
             missing = [
@@ -422,7 +422,12 @@ def run_configured(
             ]
 
             if missing:
-                message = "--execute requires " + ", ".join(missing)
+                message = (
+                    "Execution settings missing from YAML: "
+                    + ", ".join(missing)
+                    + ". For a resource without a concrete USB serial, "
+                    "provide an explicit execution section."
+                )
                 if usage_error is not None:
                     usage_error(message)
                 print(message, file=sys.stderr)

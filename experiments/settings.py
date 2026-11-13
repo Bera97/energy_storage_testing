@@ -7,6 +7,7 @@ specimen ratings, electrical safety, or instrument capability.
 
 from dataclasses import dataclass
 import math
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -276,14 +277,65 @@ def validate_execution(value):
     return result
 
 
+def _serial_from_usb_resource(resource):
+    """Read a concrete USB INSTR serial from configuration, without I/O."""
+    if not isinstance(resource, str):
+        return None
+    match = re.fullmatch(
+        r"USB[0-9]*::(?:0[xX][0-9a-fA-F]+|[0-9]+)"
+        r"::(?:0[xX][0-9a-fA-F]+|[0-9]+)"
+        r"::([^:\s,?*\\]+)(?:::[0-9]+)?(?:::INSTR)?",
+        resource.strip(),
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    serial = match.group(1)
+    if serial.upper().startswith("REPLACE_"):
+        return None
+    return serial
 def settings_for(config, **legacy):
+    """Resolve explicit overrides or defaults already present in YAML."""
     stored = config.get("execution")
-    if stored is None:
-        return {key: legacy.get(key) for key in FIELDS}
-    settings = validate_execution(stored)
-    for key, value in legacy.items():
-        if value is not None and value != settings[key]:
-            raise ValueError(f"CLI {key} conflicts with YAML execution.{key}.")
+    if stored is not None:
+        settings = validate_execution(stored)
+        for key, value in legacy.items():
+            if value is not None and value != settings[key]:
+                raise ValueError(
+                    f"Explicit {key} conflicts with YAML execution.{key}."
+                )
+        return settings
+    ratings = config.get("dut", {}).get("ratings", {})
+    voltage = ratings.get("maximum_voltage_v")
+    charge = ratings.get("maximum_continuous_charge_current_a")
+    discharge = ratings.get("maximum_continuous_discharge_current_a")
+    if voltage is not None:
+        voltage = _positive_number(
+            voltage, "dut.ratings.maximum_voltage_v"
+        )
+    current = None
+    if charge is not None and discharge is not None:
+        current = max(
+            _positive_number(
+                charge,
+                "dut.ratings.maximum_continuous_charge_current_a",
+            ),
+            _positive_number(
+                discharge,
+                "dut.ratings.maximum_continuous_discharge_current_a",
+            ),
+        )
+    settings = {
+        "expected_serial": _serial_from_usb_resource(
+            config.get("instrument", {}).get("visa_address")
+        ),
+        "maximum_voltage_v": voltage,
+        "maximum_current_a": current,
+    }
+    for key in FIELDS:
+        value = legacy.get(key)
+        if value is not None:
+            settings[key] = value
     return settings
 
 
