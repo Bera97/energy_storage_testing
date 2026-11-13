@@ -1,0 +1,65 @@
+# PREVIEW ONLY: based on the existing LIC profile for planning.
+# These values are not independently verified safe operating limits.
+# Review the initial-state protocol before implementing execution.
+# repeats counts experiments; experiment.cycles counts cycles per experiment.
+schema_version: 1
+experiment:
+  type: charge_current_sweep
+  name: charging_current_sweep
+  cycles: 1
+dut:
+  name: Tecate 40F LIC
+  specimen_id: 9&10
+  category: lic
+  chemistry: LIC
+  manufacturer: Tecate Group
+  model: TPLCE-3R8/40MR8X20
+  nominal_capacity_ah: 0.03556
+  nominal_capacitance_f: 80.0
+  ratings:
+    minimum_voltage_v: 2.19
+    maximum_voltage_v: 3.81
+    maximum_continuous_charge_current_a: 0.4
+    maximum_continuous_discharge_current_a: 0.4
+instrument:
+  visa_address: USB0::0x2A8D::0x9201::MY61391173::0::INSTR
+  channel: 1
+  four_wire: true
+  nplc: 1.0
+acquisition:
+  interval_s: 0.2
+  maximum_sample_gap_s: 0.5
+charge:
+  mode: cc_cv
+  current:
+    current_a: null
+    current_fraction: 1
+    c_rate: null
+  target_voltage_v: 3.8
+  cv_voltage_tolerance_v: 0.05
+  termination:
+    current_reference: configured_charge_current
+    current_factor: 0.05
+    hold_time_s: 5
+  maximum_duration_s: 3600
+  maximum_cv_duration_s: 1800
+rest:
+  after_charge_s: 5
+  after_discharge_s: 30
+discharge:
+  mode: constant_current
+  current:
+    basis: rated_max_discharge_fraction
+    factor: 1
+  cutoff_voltage_v: 2.2
+  maximum_duration_s: 3600
+output:
+  root_directory: runs
+  file_name: charge_current_sweep
+  analysis_directory: analysis_outputs
+sweep:
+  charge_current_a:
+  - 0.1
+  - 0.2
+  - 0.4
+  repeats: 1

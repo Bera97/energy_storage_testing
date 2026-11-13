@@ -123,6 +123,11 @@ def validate_config(document):
     Validation establishes consistency with supplied ratings, not
     datasheet correctness, electrical safety, or instrument capability.
     """
+    experiment = document.get("experiment") if isinstance(document, dict) else None
+    if isinstance(experiment, dict) and experiment.get("type") == "charge_current_sweep":
+        from experiments.sweeps import validate_charge_current_sweep
+        return validate_charge_current_sweep(document)
+
     config = deepcopy(document)
 
     _mapping(

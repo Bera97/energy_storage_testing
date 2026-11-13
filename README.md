@@ -239,3 +239,31 @@ Keep future responsibilities separate:
 Existing termination hold time means consecutive qualifying CV/current
 observations. Maximum CV duration remains a failure timeout, not successful
 completion of a timed CV hold.
+## Charging-current sweep planning
+`experiments/sweeps.py` contains sweep validation, expansion, and planning.
+The existing preconditioning planner remains unchanged.
+Use the complete example profile:
+```powershell
+python -m smu --config .\configs\charge_current_sweep.example.yaml --preview
+```
+Without mode flags, preview is also the default. The example retains the
+normal experiment sections, sets `experiment.type: charge_current_sweep`,
+and adds:
+```yaml
+sweep:
+  charge_current_a: [0.1, 0.2, 0.4]
+  repeats: 1
+```
+These are planning examples, not independently verified safe limits.
+Each current expands into the requested number of separate planned
+experiments. Values retain their supplied order, with repeats grouped
+per current. `experiment.cycles` remains cycles within each experiment.
+Duplicate current values are rejected; use repeats instead.
+A plan is limited to 1000 condition/repeat entries.
+Only the charging-current selection is replaced. Termination-reference
+rules remain unchanged, so termination current can vary with charge
+current. Inspect every condition's resolved settings and acquisition budget.
+All conditions must validate before a plan is returned. Preview creates
+no recording directories and does not authorize execution or establish a
+comparable starting state. Sweep execution and combined analysis are
+explicitly rejected in this increment. Normal preconditioning is unchanged.

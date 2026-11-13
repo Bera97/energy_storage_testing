@@ -1,6 +1,7 @@
 """Single public CLI. Importing this module does not connect to hardware."""
 
 import argparse
+import json
 from datetime import datetime
 from importlib import import_module
 from pathlib import Path
@@ -164,6 +165,19 @@ def _unified_main(arguments):
 
     try:
         _unified_config_paths(documents, paths)
+        if any(doc["experiment"]["type"] == "charge_current_sweep" for doc in documents):
+            if len(documents) != 1:
+                raise ValueError("Charging-current sweep preview accepts exactly one profile.")
+            if parsed.execute or parsed.analyze is not None:
+                raise ValueError(
+                    "Charging-current sweeps are preview-only in this increment; "
+                    "execution and sweep analysis are not implemented."
+                )
+            planner = import_module("experiments.sweeps")
+            plan = planner.build_charge_current_sweep_plan(documents[0])
+            print(json.dumps(plan, indent=2, allow_nan=False))
+            return 0
+
         run_name = None
 
         if parsed.execute:
