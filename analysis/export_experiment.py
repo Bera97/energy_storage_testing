@@ -17,6 +17,10 @@ METRICS = (
     "signed_energy_wh",
     "positive_energy_wh",
     "negative_energy_wh",
+    "signed_charge_c",
+    "signed_energy_j",
+    "positive_energy_j",
+    "negative_energy_j",
 )
 
 CSV_FIELDS = (
@@ -312,7 +316,9 @@ def analyze_and_print(
         f"{'Samples':>8} "
         f"{'Span(s)':>10} "
         f"{'Q(mAh)':>12} "
-        f"{'E(Wh)':>12}"
+        f"{'E(Wh)':>12} "
+        f"{'Q(C)':>12} "
+        f"{'E(J)':>12}"
     )
     print((f"{'CH':>2} " if dual else "") + header)
     for row in report["phases"]:
@@ -322,7 +328,9 @@ def analyze_and_print(
             f"{row['sample_count']:>8} "
             f"{row['recorded_span_s']:>10.3f} "
             f"{row['signed_charge_mah']:>12.6g} "
-            f"{row['signed_energy_wh']:>12.6g}"
+            f"{row['signed_energy_wh']:>12.6g} "
+            f"{row.get('signed_charge_c', row['signed_charge_mah'] * 3.6):>12.6g} "
+            f"{row.get('signed_energy_j', row['signed_energy_wh'] * 3600.0):>12.6g}"
         )
         channel_prefix = f"{row['channel']:>2} " if dual else ""
         print(channel_prefix + values)
