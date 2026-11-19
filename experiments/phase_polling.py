@@ -66,14 +66,14 @@ def run_phase_polling(
     Argument-validation failures occur before execution handling.
     """
     supported = {
-        "charge": "cv_current_termination",
-        "discharge": "voltage_min",
+        "charge": ("cv_current_termination", "cv_hold_elapsed"),
+        "discharge": ("voltage_min",),
     }
 
     if not isinstance(phase_type, str) or phase_type not in supported:
         raise ValueError("phase_type must be charge or discharge.")
 
-    if expected_stop_reason != supported[phase_type]:
+    if expected_stop_reason not in supported[phase_type]:
         raise ValueError(
             "expected_stop_reason does not match phase_type."
         )
@@ -314,6 +314,7 @@ ChargeShutdownError = TraceShutdownError
 
 def run_charge_polling(
     *,
+    expected_stop_reason="cv_current_termination",
     monitor,
     start,
     poll,
@@ -330,7 +331,7 @@ def run_charge_polling(
     try:
         return run_phase_polling(
             phase_type="charge",
-            expected_stop_reason="cv_current_termination",
+            expected_stop_reason=expected_stop_reason,
             monitor=monitor,
             start=start,
             poll=poll,

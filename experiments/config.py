@@ -1,5 +1,8 @@
 """Hardware-free loading and validation of experiment configuration."""
 
+from experiments import zero_current_rest as zrest
+
+from experiments.charge_controller import resolve_charge_cv_hold
 from copy import deepcopy
 from dataclasses import asdict
 import math
@@ -124,7 +127,7 @@ def validate_config(document):
     datasheet correctness, electrical safety, or instrument capability.
     """
     experiment = document.get("experiment") if isinstance(document, dict) else None
-    if isinstance(experiment, dict) and experiment.get("type") == "charge_current_sweep":
+    if isinstance(experiment, dict) and experiment.get("type") in ('charge_current_sweep', 'cv_hold_sweep'):
         from experiments.sweeps import validate_charge_current_sweep
         return validate_charge_current_sweep(document)
 
@@ -310,7 +313,7 @@ def validate_config(document):
             "maximum_duration_s",
             "maximum_cv_duration_s",
         ),
-        optional=("cv_voltage_tolerance_v",),
+        optional=("cv_voltage_tolerance_v", "cv_hold"),
     )
 
     if charge["mode"] != "cc_cv":
@@ -352,6 +355,7 @@ def validate_config(document):
             "current_factor",
             "hold_time_s",
         ),
+        optional=("mode",),
     )
 
     hold_time = _number(
@@ -367,28 +371,40 @@ def validate_config(document):
         "charge.maximum_cv_duration_s",
     )
 
+    cv_policy = resolve_charge_cv_hold(charge)
+
     if cv_timeout > charge_timeout:
         raise ValueError(
             "Maximum CV duration must not exceed "
             "maximum total charge duration."
         )
 
-    if hold_time >= cv_timeout:
+    if cv_policy is None and hold_time >= cv_timeout:
         raise ValueError(
             "Termination hold time must be below "
             "maximum CV duration."
         )
 
-    if maximum_gap is not None and maximum_gap >= hold_time:
+    if cv_policy is None and maximum_gap is not None and maximum_gap >= hold_time:
         raise ValueError(
             "acquisition.maximum_sample_gap_s must be "
             "below charge.termination.hold_time_s."
         )
 
+    if (
+        cv_policy is not None
+        and cv_policy["mode"] == "after_current_threshold"
+        and termination["current_reference"] != "configured_charge_current"
+    ):
+        raise ValueError(
+            "after_current_threshold requires "
+            "charge.termination.current_reference=configured_charge_current."
+        )
     rest = _mapping(
         config["rest"],
         "rest",
         required=("after_charge_s", "after_discharge_s"),
+        optional=("mode", "maximum_abs_current_a"),
     )
 
     for field in (
@@ -396,6 +412,8 @@ def validate_config(document):
         "after_discharge_s",
     ):
         _number(rest[field], f"rest.{field}")
+
+    zrest.validate_rest_settings(config)
 
     discharge = _mapping(
         config["discharge"],

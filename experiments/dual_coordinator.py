@@ -1,4 +1,6 @@
 """Shared scheduling core and simulation entry point. Real backend: dual_live."""
+
+from experiments import zero_current_rest as zrest
 import argparse
 from copy import deepcopy
 import json
@@ -62,14 +64,14 @@ class SimulatedInstrument:
         duration = self.phase_duration_s * (
             1.0 if channel == 1 else 1.5
         )
+        if zrest.is_measured(phase):
+            duration = phase["duration_s"]
         if self.clock() - started < duration:
             return None
         return {
             "state": "completed",
             "stop_reason": (
-                "cv_current_termination"
-                if phase["type"] == "charge_cc_cv"
-                else "voltage_min"
+                zrest.endpoint(phase)
             ),
             "evidence_kind": "simulated",
         }
@@ -162,12 +164,12 @@ def _run_backend(plan, backend, *, clock, sleep, poll_interval_s=0.05, simulatio
                     phase = deepcopy(state['phases'][state['next_index']])
                     state['current_phase'] = phase
                     state['started_s'] = timestamp
-                    if phase['type'] == 'rest':
+                    if phase['type'] == 'rest' and not zrest.is_measured(phase):
                         require_stop(channel)
                         state['deadline_s'] = timestamp + phase['duration_s']
                         state['state'] = 'resting'
                     else:
-                        state['deadline_s'] = timestamp + phase['maximum_duration_s']
+                        state['deadline_s'] = timestamp + zrest.maximum_duration(phase)
                         state['state'] = 'active'
                         backend.start_phase(channel, deepcopy(phase))
                     timestamp = now()
@@ -184,7 +186,7 @@ def _run_backend(plan, backend, *, clock, sleep, poll_interval_s=0.05, simulatio
                 if result is None:
                     continue
                 phase = state['current_phase']
-                reason = 'cv_current_termination' if phase['type'] == 'charge_cc_cv' else 'voltage_min'
+                reason = zrest.endpoint(phase)
                 if not isinstance(result, dict) or result.get('state') != 'completed' or result.get('stop_reason') != reason:
                     raise RuntimeError(f'Channel {channel} returned an invalid endpoint.')
                 finish(state, timestamp, result)

@@ -92,7 +92,7 @@ def _unified_analyze(document, run_name):
             str(source), str(destination)
         )
     if (source / "dual_experiment.json").is_file():
-        if document["experiment"]["type"] == "charge_current_sweep":
+        if document["experiment"]["type"] in ('charge_current_sweep', 'cv_hold_sweep'):
             return import_module(
                 "analysis.dual_experiment"
             ).analyze_dual_sweep(str(source), str(destination))
@@ -182,12 +182,12 @@ def _unified_main(arguments):
     try:
         _unified_config_paths(documents, paths)
         if any(
-            doc["experiment"]["type"] == "charge_current_sweep"
+            doc["experiment"]["type"] in ('charge_current_sweep', 'cv_hold_sweep')
             for doc in documents
         ):
             if len(documents) == 2:
                 if any(
-                    doc["experiment"]["type"] != "charge_current_sweep"
+                    doc["experiment"]["type"] not in ('charge_current_sweep', 'cv_hold_sweep')
                     for doc in documents
                 ):
                     raise ValueError(

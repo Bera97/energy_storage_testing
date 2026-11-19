@@ -101,6 +101,8 @@ def build_acquisition_plan(document, *, maximum_records):
 
     for phase in plan["phases"]:
         if phase["type"] == "rest":
+            if phase.get("rest_record_limit", 0) > maximum_records:
+                raise ValueError("Measured rest exceeds the requested acquisition planning limit.")
             continue
 
         budget = calculate_budget(

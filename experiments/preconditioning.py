@@ -1,5 +1,8 @@
 """Hardware-free planning of cell preconditioning sequences."""
 
+from experiments import zero_current_rest as zrest
+
+from experiments.charge_controller import resolve_charge_cv_hold
 from copy import deepcopy
 
 from experiments.config import validate_config
@@ -65,6 +68,9 @@ def build_plan(document):
             ],
         }
 
+        cv_policy = resolve_charge_cv_hold(charge)
+        if cv_policy is not None:
+            charge_settings["cv_hold"] = cv_policy
         if monitoring is not None:
             charge_settings["monitoring"] = deepcopy(
                 monitoring
@@ -105,6 +111,8 @@ def build_plan(document):
             duration_s=rest["after_discharge_s"],
             requires_verified_output_off=True,
         )
+
+    zrest.decorate_rest_phases(phases, config)
 
     return {
         "plan_schema_version": 1,

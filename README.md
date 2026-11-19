@@ -376,3 +376,166 @@ CV-hold requirement for future implementation: an additional hold after reaching
 the charging-current fraction starts immediately at the first valid strictly
 below-threshold current sample with CV confirmed, without a qualification delay.
 This dual-sweep change does not yet implement either new CV-hold policy.
+### Unified charge termination
+Every experiment YAML profile uses the same charge.termination structure.
+There is no separate charge.cv_hold setting in the maintained profiles.
+```yaml
+charge:
+  # Retain mode, current, target_voltage_v, and other required charge settings.
+  termination:
+    mode: current_threshold
+    current_reference: configured_charge_current
+    current_factor: 0.1
+    hold_time_s: 5
+  maximum_duration_s: 3600
+  maximum_cv_duration_s: 1800
+```
+The four termination fields have the same structure in single-channel,
+dual-channel, preconditioning, and sweep profiles:
+- current_threshold: hold_time_s is consecutive qualifying CV/current time.
+- from_cv_entry: hold_time_s is total time from the first confirmed-CV sample.
+  The current fraction defines a diagnostic threshold, not the stopping rule.
+- after_current_threshold: hold_time_s is additional time starting immediately
+  at the first valid strictly below-threshold current sample with CV confirmed.
+  There is no qualification delay, and a subsequent current rise does not reset
+  the timer while CV remains confirmed.
+For a 30-second total CV hold:
+```yaml
+termination:
+  mode: from_cv_entry
+  current_reference: configured_charge_current
+  current_factor: 0.1
+  hold_time_s: 30
+```
+For 30 additional seconds after first crossing the charging-current fraction:
+```yaml
+termination:
+  mode: after_current_threshold
+  current_reference: configured_charge_current
+  current_factor: 0.1
+  hold_time_s: 30
+```
+after_current_threshold requires configured_charge_current as its reference.
+Both timed policies fail if confirmed CV is lost after the timer starts.
+The protective maximum_duration_s and maximum_cv_duration_s remain outside
+termination because reaching them is failure, not successful completion.
+A selected holding duration must leave room before the applicable timeout.
+The planner derives internal phase fields and timing evidence from this one
+termination block. Those derived fields are not additional YAML settings.
+Old layouts remain readable for historical configuration/recording compatibility.
+Do not combine termination.mode with the old charge.cv_hold block: that ambiguity
+is rejected. Existing recordings and stored configuration snapshots are unchanged.
+```powershell
+python -m smu --config configs/cv_hold.ch1.example.yaml --config configs/cv_hold.ch2.example.yaml --preview
+```
+The example specimen IDs are preview-only placeholders. Offline tests and preview
+do not establish physical ratings, wiring, or hardware readiness.
+### CV-hold duration sweeps
+Use experiment.type: cv_hold_sweep. The duration list is configured only at
+charge.termination.hold_time_s; do not add a second duration list under sweep.
+```yaml
+experiment:
+  type: cv_hold_sweep
+  name: cv_hold_duration_comparison
+  cycles: 1
+charge:
+  # Retain the other required charge settings.
+  termination:
+    mode: from_cv_entry
+    current_reference: configured_charge_current
+    current_factor: 0.1
+    hold_time_s:[15][30][60]
+sweep:
+  repeats: 1
+  initial_discharge: true
+```
+The same structure supports after_current_threshold. current_threshold is not
+a timed-CV sweep mode. Each duration must be positive, distinct, and shorter
+than the protective CV timeout. All conditions validate before execution.
+The supplied charging current remains fixed; only the selected holding time
+changes. Repeats are grouped under each supplied duration.
+Single-channel execution uses one profile. Dual execution uses two CV-hold
+sweep profiles and one shared instrument session. Channels can select different
+timed policies, duration lists, repeats, and cycles. Mixed sweep experiment
+types in one dual invocation are rejected. Both channels complete initial
+preparation before either charges; subsequent progression is independent.
+```powershell
+python -m smu --config configs/cv_hold_sweep.ch1.example.yaml --preview
+python -m smu --config configs/cv_hold_sweep.ch1.example.yaml --config configs/cv_hold_sweep.ch2.example.yaml --preview
+```
+The new examples retain preview-only specimen placeholders. Their values are
+not independently qualified physical operating limits.
+Analysis includes cv_hold_mode and cv_hold_time_s in per-condition comparisons.
+hold_time_summary.csv groups observations by selected holding duration and
+policy, separately for each dual channel/specimen. It does not pool different
+durations merely because their charging currents match. Console summaries keep
+mAh, C, Wh, and J and additionally show Hold(s).
+Existing charging-current sweep interfaces and output names remain supported.
+Historical recordings are not modified. Physical CV-hold validation is separate
+from the offline integration tests.
+
+## Optional recorded zero-current rest
+
+Omitting rest.mode preserves the existing outputs-OFF rest and old plan shape.
+The explicit outputs_off mode also performs no measurements. To select the new
+output-enabled measurement procedure, use:
+
+```yaml
+rest:
+  # Options: outputs_off | zero_current_logging.
+  mode: zero_current_logging
+  maximum_abs_current_a: 0.001
+  after_charge_s: 5
+  after_discharge_s: 30
+```
+
+The 0.001 A guard above is an example operator-reviewed SOFTWARE fault limit,
+not an independently qualified current limit or a recommended universal value.
+The guard must be positive and below both supplied continuous current ratings.
+Existing voltage limits and configured sensing remain applicable. Do not infer
+assembly current ratings merely by adding component ratings.
+
+This procedure commands a fixed 0 A CURRENT source with the selected output ON.
+It is not a 0 V voltage source, an open output relay, or electrical isolation.
+The software requires exactly zero current-setpoint readback; it does not
+silently substitute a small nonzero setpoint. Source mode, fixed DC operation,
+voltage compliance, sensing, NPLC and output states are checked. Real hardware
+behaviour, accuracy, transients and the operating envelope need supervision
+and separate physical validation. No real hardware is exercised by the patch.
+
+The recording uses paired spot queries through the existing SpotAcquisition
+path, not a new buffered trace. The interval is a requested host scheduling
+interval, not a hardware-guaranteed sample rate. Host query brackets are stored
+along with raw instrument timestamps. Continuity between independent spot-query
+instrument timestamps is NOT assumed. Gap checks use host query-completion
+times, including the first query's latency from before output activation.
+Timing out cannot interrupt a blocked VISA call. The duration endpoint is an
+eligible sample at or after the requested host-relative rest duration, subject
+to the configured gap/deadline. The physical output-enable instant is not
+independently established. Slow communications may require a reviewed gap or
+interval adjustment; do not disable guards to hide acquisition failures.
+
+All three rest positions are supported: after initial discharge, after charge,
+and after discharge. The single runner logs rests through its existing session.
+Dual operation uses cooperative channel-local rest tasks, without changing
+shared result formatting while a peer is active. Normal completion stops only
+the selected dual channel; exceptions propagate to stop-both cleanup. The
+initial-preparation barrier remains in effect. Preview and analysis are offline.
+
+Rest recordings are explicitly separate sidecars: rest_phase_NNNN/rest.json,
+measurements.csv and COMPLETE. They are not ordinary charge/discharge recordings;
+use whole-experiment/sweep validation for them, not validate_run on a rest folder.
+Completion requires closed CSV, source/activation/stop evidence and duration and
+sample checks. CSV hashes detect subsequent data changes, not file authenticity.
+Whole-run analysis validates and exports rest recordings and rest_summary.csv,
+including voltage change and maximum absolute measured current. They remain
+excluded from charge/discharge pairing and efficiency/energy-ratio calculations.
+Current means SMU-terminal current, NOT internal LIC self-discharge or current
+redistribution between parallel LICs. Raw evidence is never rewritten by export.
+Analysis exports may contain original absolute recording references.
+
+The new example has a REPLACE_ run-name prefix to prevent accidental execution
+through the public CLI. It is for preview and review only. Existing trial
+profiles are NOT enabled or changed by this patch. Keep their physical-test
+history intact. Validate the single small case before larger CV sweeps or dual
+physical trials. Existing failed runs are never automatically resumed.

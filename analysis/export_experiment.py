@@ -3,6 +3,8 @@
 Importing this module does not connect to hardware.
 """
 
+from experiments import zero_current_rest as zrest
+
 import csv
 from importlib import import_module
 import json
@@ -256,6 +258,7 @@ def export_experiment(
         "phases": rows,
     }
 
+    zrest.attach_rest_exports(report, source, destination)
     _write_json(
         destination / "summary.json",
         report,
@@ -317,6 +320,8 @@ def analyze_and_print(
         )
         return 1
     print(f"Analysis: {Path(output_directory).resolve()}")
+    if report.get("rest_phases"):
+        print(f"Recorded rests: {len(report['rest_phases'])}; see rest_summary.csv.")
     header = (
         f"{'Phase':>5} "
         f"{'Type':<14} "
@@ -434,6 +439,14 @@ def validate_sweep(directory):
                 "condition_index": None if initial_only else condition["condition_index"],
                 "repeat_index": None if initial_only else condition["repeat_index"],
                 "charge_current_a": None if initial_only else condition["charge_current_a"],
+                **(
+                    {
+                        key: condition[key]
+                        for key in ("cv_hold_time_s", "cv_hold_mode")
+                    }
+                    if not initial_only and "cv_hold_time_s" in condition
+                    else {}
+                ),
             }
             _require_sweep(
                 all(stage.get(key) == value for key, value in expected_identity.items())
@@ -570,20 +583,35 @@ def _sweep_cycle_rows(stage, phase_rows):
             "recorded_energy_ratio": ratio,
             "warning_count": charge["warning_count"] + discharge["warning_count"],
         })
+    if "cv_hold_time_s" in stage:
+        for row in rows:
+            row["cv_hold_time_s"] = stage["cv_hold_time_s"]
+            row["cv_hold_mode"] = stage["cv_hold_mode"]
     return rows
+
 def _sweep_group_rows(cycles):
     import statistics
     groups = {}
     for row in cycles:
-        groups.setdefault(row["charge_current_a"], []).append(row)
+        key = (
+            ("cv_hold", row["cv_hold_mode"], row["cv_hold_time_s"])
+            if "cv_hold_time_s" in row
+            else ("charge_current", row["charge_current_a"])
+        )
+        groups.setdefault(key, []).append(row)
     rows = []
-    for current, observations in groups.items():
+    for key, observations in groups.items():
+        extra = (
+            {"cv_hold_mode": key[1], "cv_hold_time_s": key[2]}
+            if key[0] == "cv_hold" else {}
+        )
         for metric, unit in SWEEP_GROUP_METRICS.items():
             values = [
                 row[metric] for row in observations if row[metric] is not None
             ]
             rows.append({
-                "charge_current_a": current,
+                "charge_current_a": observations[0]["charge_current_a"],
+                **extra,
                 "metric": metric,
                 "unit": unit,
                 "condition_count": len({
@@ -653,6 +681,11 @@ def export_sweep(directory, output_directory):
             "repeat_index": stage["repeat_index"],
             "charge_current_a": stage["charge_current_a"],
             **row,
+            **{
+                key: stage[key]
+                for key in ("cv_hold_time_s", "cv_hold_mode")
+                if key in stage
+            },
             "analysis_directory": (
                 Path(stage["stage_id"]) / row["analysis_directory"]
             ).as_posix(),
@@ -660,22 +693,27 @@ def export_sweep(directory, output_directory):
         if stage["kind"] == "condition":
             cycle_rows.extend(_sweep_cycle_rows(stage, report["phases"]))
     grouped = _sweep_group_rows(cycle_rows)
+    is_hold_sweep = document["plan"]["experiment_type"] == "cv_hold_sweep"
+    extra_fields = ("cv_hold_mode", "cv_hold_time_s") if is_hold_sweep else ()
     _write_sweep_csv(
         destination / "summary.csv",
         (
             "stage_id", "stage_kind", "condition_index", "repeat_index",
-            "charge_current_a", "analysis_directory", *CSV_FIELDS,
+            "charge_current_a", "analysis_directory", *CSV_FIELDS, *extra_fields,
         ),
         phase_rows,
     )
     _write_sweep_csv(
-        destination / "cycle_comparison.csv", SWEEP_CYCLE_FIELDS, cycle_rows
+        destination / "cycle_comparison.csv", (*SWEEP_CYCLE_FIELDS, *extra_fields), cycle_rows
     )
     _write_sweep_csv(
-        destination / "current_summary.csv",
+        destination / (
+            "hold_time_summary.csv" if is_hold_sweep else "current_summary.csv"
+        ),
         (
             "charge_current_a", "metric", "unit", "condition_count", "cycle_count",
             "observation_count", "mean", "sample_stddev", "minimum", "maximum",
+            *extra_fields,
         ),
         grouped,
     )
@@ -710,8 +748,9 @@ def export_sweep(directory, output_directory):
         ],
         "phases": phase_rows,
         "cycles": cycle_rows,
-        "current_summary": grouped,
+        ("hold_time_summary" if is_hold_sweep else "current_summary"): grouped,
     }
+    zrest.attach_rest_exports(report, source, destination)
     _write_json(destination / "summary.json", report)
     with (destination / "ANALYSIS_COMPLETE").open("x", encoding="utf-8") as handle:
         handle.write("completed\n")
@@ -731,11 +770,18 @@ def analyze_sweep(directory, output_directory):
             file=sys.stderr,
         )
         return 1
+    if report.get("rest_phases"):
+        print(f"Recorded rests: {len(report['rest_phases'])}; see rest_summary.csv.")
     _print_sweep_summary(report, output_directory)
     return 0
 def _print_sweep_summary(report, output_directory):
     """Present existing cycle results; no acquisition or file modification."""
+    has_hold = any("cv_hold_time_s" in row for row in report["cycles"])
     print(f"Sweep analysis: {Path(output_directory).resolve()}")
+    if has_hold:
+        modes = sorted({row["cv_hold_mode"] for row in report["cycles"]})
+        print("CV holding policy: " + ", ".join(modes))
+        print("Hold(s) is the selected duration for that condition.")
     print(
         "Q retains its measurement sign. E_mag is the recorded directional "
         "energy magnitude: charge E+ or discharge E-."
@@ -746,7 +792,8 @@ def _print_sweep_summary(report, output_directory):
     )
     print(
         f"{'Condition':<29} {'Cycle':>5} {'I_chg(A)':>9} "
-        f"{'Phase':<9} {'Span(s)':>10} "
+        + (f"{'Hold(s)':>9} " if has_hold else "")
+        + f"{'Phase':<9} {'Span(s)':>10} "
         f"{'Q(mAh)':>12} {'Q(C)':>12} "
         f"{'E_mag(Wh)':>12} {'E_mag(J)':>12}"
     )
@@ -764,7 +811,8 @@ def _print_sweep_summary(report, output_directory):
                 f"{row['condition_id']:<29} "
                 f"{row['cycle']:>5} "
                 f"{row['charge_current_a']:>9.5g} "
-                f"{phase:<9} "
+                + (f"{row['cv_hold_time_s']:>9.6g} " if has_hold else "")
+                + f"{phase:<9} "
                 f"{span:>10.6g} "
                 f"{charge_mah:>12.6g} "
                 f"{charge_c:>12.6g} "

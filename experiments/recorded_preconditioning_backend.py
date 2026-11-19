@@ -10,6 +10,8 @@ and recording finalization. It must return ExperimentPhaseRun.
 The runner retains the outer experiment shutdown boundary.
 """
 
+from experiments import zero_current_rest as zrest
+
 from copy import deepcopy
 import time
 
@@ -111,6 +113,16 @@ class RecordedPreconditioningBackend:
 
         if phase.get("type") != "rest":
             raise ValueError("Expected a rest phase.")
+
+        if zrest.is_measured(phase):
+            self.shutdown_verified()
+            report = self.execute_active_phase.record_rest(deepcopy(phase))
+            self.phase_outcomes.append({
+                "phase_index": phase["phase_index"], "cycle": phase["cycle"],
+                "type": "rest", "state": "rest_completed", "stop_reason": "rest_elapsed",
+                "rest_report": report,
+            })
+            return
 
         report = rest_outputs_off(
             self.smu,

@@ -1,15 +1,13 @@
-# Execution defaults come from this profile's USB VISA serial and DUT ratings.
-# An execution section is optional and overrides those defaults.
-# Planning example copied from the existing profile.
-# Review actual specimen identity and all limits before any live use.
 schema_version: 1
 experiment:
+  # Options: preconditioning | charge_current_sweep | cv_hold_sweep.
   type: preconditioning
   name: cell_preconditioning
   cycles: 2
 dut:
   name: Hanna's EDLC
   specimen_id: '2'
+  # Options: battery | edlc | lic.
   category: edlc
   chemistry: EDLC
   manufacturer: Kemet
@@ -23,7 +21,9 @@ dut:
     maximum_continuous_discharge_current_a: 0.1
 instrument:
   visa_address: USB0::0x2A8D::0x9201::MY61391173::0::INSTR
+  # Options: 1 | 2.
   channel: 2
+  # Options: true (4-wire) | false (2-wire).
   four_wire: false
   nplc: 1.0
 acquisition:
@@ -31,6 +31,7 @@ acquisition:
   maximum_sample_gap_s: 0.5
 charge:
   mode: cc_cv
+  # Choose one: current_a | current_fraction | c_rate; others null.
   current:
     current_a: null
     current_fraction: null
@@ -38,8 +39,12 @@ charge:
   target_voltage_v: 5.5
   cv_voltage_tolerance_v: 0.05
   termination:
+    # Options: current_threshold | from_cv_entry | after_current_threshold.
+    mode: current_threshold
+    # Options: rated_max_charge_current | configured_charge_current.
     current_reference: configured_charge_current
     current_factor: 0.05
+    # One number for fixed holding; a list for cv_hold_sweep.
     hold_time_s: 5
   maximum_duration_s: 3600
   maximum_cv_duration_s: 1800
@@ -55,6 +60,5 @@ discharge:
   maximum_duration_s: 3600
 output:
   root_directory: runs
-  # Run folder becomes <timestamp>_<file_name> inside root_directory.
   file_name: channel2
   analysis_directory: analysis_outputs

@@ -14,6 +14,7 @@ This module coordinates phase order. It is not itself a hardware
 monitor, timer, measurement recorder, or independent protection.
 """
 
+from experiments.charge_controller import charge_stop_reason
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Protocol
@@ -83,7 +84,7 @@ def _run_phase(backend, phase):
 
     if phase_type == "charge_cc_cv":
         result = backend.charge(deepcopy(phase))
-        expected = "cv_current_termination"
+        expected = charge_stop_reason(phase)
     elif phase_type == "discharge_cc":
         result = backend.discharge(deepcopy(phase))
         expected = "voltage_min"

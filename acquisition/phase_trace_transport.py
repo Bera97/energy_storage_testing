@@ -6,6 +6,8 @@ boundary. This transport finalizes trace retrieval, not the complete
 recording. The caller owns writer closure and metadata finalization.
 Only one controller/thread may use the instrument.
 """
+from experiments.charge_controller import charge_stop_reason, charge_policy_evidence
+from functools import partial
 import time
 from experiments.charge_trace_monitor import ChargeTraceMonitor
 from experiments.discharge_trace_monitor import DischargeTraceMonitor
@@ -145,6 +147,9 @@ class _PhaseTraceTransport:
             report['trailing_record_count'] = len(records) - report['records_saved_before_finalization']
             report['fault_record_indices'] = [index for index, reading in enumerate(records) if reading.has_fault]
             report['measurement_timing'] = timing_evidence()
+            evidence = charge_policy_evidence(monitor)
+            if evidence is not None:
+                report["charge_policy_evidence"] = evidence
             return report
         except BaseException as original_error:
             original_error.partial_readings = tuple(records)
@@ -214,7 +219,14 @@ class ChargeTraceTransport(_PhaseTraceTransport):
             sleep=sleep,
             measurement_time_basis=measurement_time_basis,
             _monitor_factory=monitor_factory,
-            _polling=run_charge_polling,
+            _polling=(
+                run_charge_polling
+                if "cv_hold" not in phase
+                else partial(
+                    run_charge_polling,
+                    expected_stop_reason=charge_stop_reason(phase),
+                )
+            ),
             _loop_report_attribute='charge_loop_report',
             _reuse_error='Use a fresh transport for each charge phase.',
         )
