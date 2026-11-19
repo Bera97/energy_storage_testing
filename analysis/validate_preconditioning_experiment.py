@@ -16,6 +16,8 @@ independently verify physical shutdown, measurement accuracy,
 or file authenticity.
 """
 
+from experiments import zero_current_rest as zrest
+
 from experiments.charge_controller import charge_stop_reason
 import json
 from pathlib import Path
@@ -360,6 +362,16 @@ def validate_experiment(
             errors.append(
                 f"Backend evidence {index} differs from the plan."
             )
+            continue
+
+        if zrest.is_measured(planned):
+            try:
+                if entry.get("state") != "rest_completed" or entry.get("stop_reason") != "rest_elapsed":
+                    raise ValueError("Measured-rest backend completion is inconsistent.")
+                zrest.validate_record(entry.get("rest_report"), planned,
+                    document["metadata"]["configuration"], allowed_root)
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
+                errors.append(f"Measured rest {index}: {error}")
             continue
 
         if planned["type"] == "rest":

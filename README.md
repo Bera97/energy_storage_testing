@@ -473,3 +473,69 @@ mAh, C, Wh, and J and additionally show Hold(s).
 Existing charging-current sweep interfaces and output names remain supported.
 Historical recordings are not modified. Physical CV-hold validation is separate
 from the offline integration tests.
+
+## Optional recorded zero-current rest
+
+Omitting rest.mode preserves the existing outputs-OFF rest and old plan shape.
+The explicit outputs_off mode also performs no measurements. To select the new
+output-enabled measurement procedure, use:
+
+```yaml
+rest:
+  # Options: outputs_off | zero_current_logging.
+  mode: zero_current_logging
+  maximum_abs_current_a: 0.001
+  after_charge_s: 5
+  after_discharge_s: 30
+```
+
+The 0.001 A guard above is an example operator-reviewed SOFTWARE fault limit,
+not an independently qualified current limit or a recommended universal value.
+The guard must be positive and below both supplied continuous current ratings.
+Existing voltage limits and configured sensing remain applicable. Do not infer
+assembly current ratings merely by adding component ratings.
+
+This procedure commands a fixed 0 A CURRENT source with the selected output ON.
+It is not a 0 V voltage source, an open output relay, or electrical isolation.
+The software requires exactly zero current-setpoint readback; it does not
+silently substitute a small nonzero setpoint. Source mode, fixed DC operation,
+voltage compliance, sensing, NPLC and output states are checked. Real hardware
+behaviour, accuracy, transients and the operating envelope need supervision
+and separate physical validation. No real hardware is exercised by the patch.
+
+The recording uses paired spot queries through the existing SpotAcquisition
+path, not a new buffered trace. The interval is a requested host scheduling
+interval, not a hardware-guaranteed sample rate. Host query brackets are stored
+along with raw instrument timestamps. Continuity between independent spot-query
+instrument timestamps is NOT assumed. Gap checks use host query-completion
+times, including the first query's latency from before output activation.
+Timing out cannot interrupt a blocked VISA call. The duration endpoint is an
+eligible sample at or after the requested host-relative rest duration, subject
+to the configured gap/deadline. The physical output-enable instant is not
+independently established. Slow communications may require a reviewed gap or
+interval adjustment; do not disable guards to hide acquisition failures.
+
+All three rest positions are supported: after initial discharge, after charge,
+and after discharge. The single runner logs rests through its existing session.
+Dual operation uses cooperative channel-local rest tasks, without changing
+shared result formatting while a peer is active. Normal completion stops only
+the selected dual channel; exceptions propagate to stop-both cleanup. The
+initial-preparation barrier remains in effect. Preview and analysis are offline.
+
+Rest recordings are explicitly separate sidecars: rest_phase_NNNN/rest.json,
+measurements.csv and COMPLETE. They are not ordinary charge/discharge recordings;
+use whole-experiment/sweep validation for them, not validate_run on a rest folder.
+Completion requires closed CSV, source/activation/stop evidence and duration and
+sample checks. CSV hashes detect subsequent data changes, not file authenticity.
+Whole-run analysis validates and exports rest recordings and rest_summary.csv,
+including voltage change and maximum absolute measured current. They remain
+excluded from charge/discharge pairing and efficiency/energy-ratio calculations.
+Current means SMU-terminal current, NOT internal LIC self-discharge or current
+redistribution between parallel LICs. Raw evidence is never rewritten by export.
+Analysis exports may contain original absolute recording references.
+
+The new example has a REPLACE_ run-name prefix to prevent accidental execution
+through the public CLI. It is for preview and review only. Existing trial
+profiles are NOT enabled or changed by this patch. Keep their physical-test
+history intact. Validate the single small case before larger CV sweeps or dual
+physical trials. Existing failed runs are never automatically resumed.

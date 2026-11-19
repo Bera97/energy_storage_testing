@@ -1,5 +1,7 @@
 """Hardware-free loading and validation of experiment configuration."""
 
+from experiments import zero_current_rest as zrest
+
 from experiments.charge_controller import resolve_charge_cv_hold
 from copy import deepcopy
 from dataclasses import asdict
@@ -402,6 +404,7 @@ def validate_config(document):
         config["rest"],
         "rest",
         required=("after_charge_s", "after_discharge_s"),
+        optional=("mode", "maximum_abs_current_a"),
     )
 
     for field in (
@@ -409,6 +412,8 @@ def validate_config(document):
         "after_discharge_s",
     ):
         _number(rest[field], f"rest.{field}")
+
+    zrest.validate_rest_settings(config)
 
     discharge = _mapping(
         config["discharge"],

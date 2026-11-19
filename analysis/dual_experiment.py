@@ -9,6 +9,8 @@ Existing destinations are refused; a destination without
 ANALYSIS_COMPLETE is partial and must not be trusted.
 """
 
+from experiments import zero_current_rest as zrest
+
 import argparse
 import csv
 from importlib import import_module
@@ -141,6 +143,9 @@ def check_batch(directory, *, require_marker=True):
                 )
                 previous = finish
                 if phase["type"] == "rest":
+                    if zrest.is_measured(phase):
+                        zrest.validate_record(outcome.get("rest_report"), phase,
+                            zrest.config_for_phase(plan, channel["channel"], phase), root)
                     _require_batch(
                         outcome["stop_reason"] == "rest_elapsed"
                         and finish - start + 1e-9
@@ -322,6 +327,8 @@ def analyze_batch(directory, output_directory):
         ),
         "phases": rows,
     }
+
+    zrest.attach_rest_exports(report, source, destination)
 
     with (destination / "summary.json").open(
         "x",
@@ -556,6 +563,7 @@ def export_dual_sweep(directory, output_directory):
         "cycles": cycles,
         ("hold_time_summary" if is_hold_sweep else "current_summary"): groups,
     }
+    zrest.attach_rest_exports(report, source, destination)
     _write_json(destination / "summary.json", report)
     with (destination / "ANALYSIS_COMPLETE").open("x", encoding="utf-8") as handle:
         handle.write("completed\n")
@@ -576,6 +584,8 @@ def analyze_dual_sweep(directory, output_directory):
             file=sys.stderr,
         )
         return 1
+    if report.get("rest_phases"):
+        print(f"Recorded rests: {len(report['rest_phases'])}; see rest_summary.csv.")
     for channel in sorted({row["channel"] for row in report["cycles"]}):
         rows = [row for row in report["cycles"] if row["channel"] == channel]
         print(f"\nCH{channel} ? specimen {rows[0]['specimen_id']}")

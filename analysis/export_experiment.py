@@ -3,6 +3,8 @@
 Importing this module does not connect to hardware.
 """
 
+from experiments import zero_current_rest as zrest
+
 import csv
 from importlib import import_module
 import json
@@ -256,6 +258,7 @@ def export_experiment(
         "phases": rows,
     }
 
+    zrest.attach_rest_exports(report, source, destination)
     _write_json(
         destination / "summary.json",
         report,
@@ -317,6 +320,8 @@ def analyze_and_print(
         )
         return 1
     print(f"Analysis: {Path(output_directory).resolve()}")
+    if report.get("rest_phases"):
+        print(f"Recorded rests: {len(report['rest_phases'])}; see rest_summary.csv.")
     header = (
         f"{'Phase':>5} "
         f"{'Type':<14} "
@@ -745,6 +750,7 @@ def export_sweep(directory, output_directory):
         "cycles": cycle_rows,
         ("hold_time_summary" if is_hold_sweep else "current_summary"): grouped,
     }
+    zrest.attach_rest_exports(report, source, destination)
     _write_json(destination / "summary.json", report)
     with (destination / "ANALYSIS_COMPLETE").open("x", encoding="utf-8") as handle:
         handle.write("completed\n")
@@ -764,6 +770,8 @@ def analyze_sweep(directory, output_directory):
             file=sys.stderr,
         )
         return 1
+    if report.get("rest_phases"):
+        print(f"Recorded rests: {len(report['rest_phases'])}; see rest_summary.csv.")
     _print_sweep_summary(report, output_directory)
     return 0
 def _print_sweep_summary(report, output_directory):

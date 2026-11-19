@@ -1,4 +1,6 @@
 """Experimental supervised dual preconditioning and evidence checking."""
+
+from experiments import zero_current_rest as zrest
 import argparse
 from copy import deepcopy
 import json
@@ -79,6 +81,8 @@ class RealBackend:
                 )
     def phase_deadline(self, channel, default):
         task = self.active.get(channel)
+        if isinstance(task, zrest.ZeroCurrentRestTask):
+            return task.rest_deadline_s
         if task is not None and task.state == "draining":
             return task.drain_deadline
         return default
@@ -107,15 +111,22 @@ class RealBackend:
             channel not in self.active,
             "Channel already owns a phase.",
         )
-        task = self.phase_factory(
-            self.session,
-            channel,
-            phase,
-            self.directory / f"channel_{channel}",
-            f"phase_{phase['phase_index']:04d}",
-            clock=self.clock,
-            allow_output=True,
-        )
+        if zrest.is_measured(phase):
+            task = zrest.ZeroCurrentRestTask(
+                self.session.smu, zrest.config_for_phase(self.plan, channel, phase),
+                phase, self.directory / f"channel_{channel}" / f"rest_phase_{phase['phase_index']:04d}",
+                lambda: self.session.stop_channel(channel), clock=self.clock, shared=True,
+            )
+        else:
+            task = self.phase_factory(
+                self.session,
+                channel,
+                phase,
+                self.directory / f"channel_{channel}",
+                f"phase_{phase['phase_index']:04d}",
+                clock=self.clock,
+                allow_output=True,
+            )
         self.active[channel] = task
         task.start()
         self.events.append({
@@ -138,7 +149,13 @@ class RealBackend:
         return result
     def finalize_phase(self, channel, phase, outcome):
         self.check_deadlines()
-        if phase["type"] != "rest":
+        if zrest.is_measured(phase):
+            task = self.active[channel]
+            require(task.state == "completed" and task.finalized
+                    and outcome.get("rest_report") == task.outcome["rest_report"],
+                    "Measured-rest recording was not finalized consistently.")
+            del self.active[channel]
+        elif phase["type"] != "rest":
             task = self.active[channel]
             require(
                 task.state == "completed" and task.run.finalized,

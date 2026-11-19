@@ -1,5 +1,7 @@
 """Hardware-free planning of cell preconditioning sequences."""
 
+from experiments import zero_current_rest as zrest
+
 from experiments.charge_controller import resolve_charge_cv_hold
 from copy import deepcopy
 
@@ -109,6 +111,8 @@ def build_plan(document):
             duration_s=rest["after_discharge_s"],
             requires_verified_output_off=True,
         )
+
+    zrest.decorate_rest_phases(phases, config)
 
     return {
         "plan_schema_version": 1,

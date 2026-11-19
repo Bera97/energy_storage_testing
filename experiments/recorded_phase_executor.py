@@ -14,6 +14,9 @@ The caller retains the outer experiment shutdown boundary.
 Only one controller/thread may use the instrument.
 """
 
+from experiments import zero_current_rest as zrest
+from pathlib import Path
+
 from copy import deepcopy
 from dataclasses import asdict
 import math
@@ -254,6 +257,21 @@ class RecordedPhaseExecutor:
                     "maximum_voltage_v"
                 ],
             )
+
+    def record_rest(self, phase):
+        expected = next((item for item in self.plan["phases"]
+                         if item["phase_index"] == phase.get("phase_index")), None)
+        if expected != phase or not zrest.is_measured(phase):
+            raise ValueError("Rest differs from the configured plan.")
+        def stop():
+            self.smu.shutdown()
+            return True
+        task = zrest.ZeroCurrentRestTask(
+            self.smu, self.configuration, phase,
+            Path(self.base_directory) / f"rest_phase_{phase['phase_index']:04d}",
+            stop, clock=self.clock,
+        )
+        return task.run_to_completion(sleep=self.sleep, poll_interval_s=self.poll_interval_s)
 
     def __call__(self, phase):
         planned = self._planned_phase(phase)
