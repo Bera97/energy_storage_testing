@@ -95,7 +95,8 @@ def config_for_phase(plan, channel, phase):
     if "sweep_plan" not in preview:
         return deepcopy(preview["acquisition_plan"]["configuration"])
     conditions = preview["sweep_plan"]["conditions"]
-    selected = (conditions[0] if phase["sweep_stage_id"] == "initial_discharge" else
+    selected = (preview["sweep_plan"].get("initial_preparation", conditions[0])
+                if phase["sweep_stage_id"] == "initial_discharge" else
                 next(item for item in conditions if item["condition_id"] == phase["sweep_stage_id"]))
     return deepcopy(selected["config"])
 

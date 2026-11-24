@@ -9,7 +9,7 @@ def build_dual_plan(documents, *, maximum_records=100000):
     if not isinstance(documents, (list, tuple)) or len(documents) != 2:
         raise ValueError("Exactly two configuration documents are required.")
     sweep_flags = [
-        document.get("experiment", {}).get("type") in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep')
+        document.get("experiment", {}).get("type") in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep', 'discharge_current_sweep')
         for document in documents
     ]
     if any(sweep_flags):

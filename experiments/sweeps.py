@@ -23,12 +23,16 @@ def validate_charge_current_sweep(document):
     )
     kind = experiment["type"]
     if kind not in (
-        "charge_current_sweep", "cv_hold_sweep", "termination_current_factor_sweep"
+        "charge_current_sweep", "cv_hold_sweep", "termination_current_factor_sweep",
+        "discharge_current_sweep"
     ):
         raise ValueError("Expected a supported current, CV-hold, or termination-factor sweep.")
     is_hold = kind == "cv_hold_sweep"
     is_factor = kind == "termination_current_factor_sweep"
+    is_discharge = kind == "discharge_current_sweep"
     required = (
+        ("discharge_current_a", "repeats", "initial_discharge")
+        if is_discharge else
         ("repeats", "initial_discharge")
         if is_hold or is_factor else
         ("charge_current_a", "repeats", "initial_discharge")
@@ -36,7 +40,10 @@ def validate_charge_current_sweep(document):
     sweep = _mapping(document["sweep"], "sweep", required=required)
     if sweep["initial_discharge"] is not True:
         raise ValueError("sweep.initial_discharge must be true.")
-    if is_hold or is_factor:
+    if is_discharge:
+        values = sweep["discharge_current_a"]
+        value_path = "sweep.discharge_current_a"
+    elif is_hold or is_factor:
         charge = document["charge"]
         if not isinstance(charge, dict) or not isinstance(charge.get("termination"), dict):
             raise ValueError("CV hold sweep requires charge.termination.")
@@ -73,6 +80,8 @@ def validate_charge_current_sweep(document):
     ]
     if len(set(values)) != len(values):
         raise ValueError(
+            "Duplicate discharging-current values; use sweep.repeats instead."
+            if is_discharge else
             "Duplicate termination-current factors; use sweep.repeats instead."
             if is_factor else
             "Duplicate CV-hold durations; use sweep.repeats instead."
@@ -82,6 +91,7 @@ def validate_charge_current_sweep(document):
     base = deepcopy(document)
     del base["sweep"]
     base["experiment"]["type"] = "preconditioning"
+    initial_config = validate_config(base)["config"] if is_discharge else None
     conditions = []
     for index, value in enumerate(values, 1):
         condition = deepcopy(base)
@@ -89,6 +99,18 @@ def validate_charge_current_sweep(document):
             condition["charge"]["termination"]["current_factor"] = value
         elif is_hold:
             condition["charge"]["termination"]["hold_time_s"] = value
+        elif is_discharge:
+            maximum = _number(
+                condition["dut"]["ratings"]["maximum_continuous_discharge_current_a"],
+                "dut.ratings.maximum_continuous_discharge_current_a",
+            )
+            if value > maximum:
+                raise ValueError(
+                    f"Sweep condition {index} ({value:g} A): discharge current exceeds supplied rating."
+                )
+            condition["discharge"]["current"] = {
+                "basis": "rated_max_discharge_fraction", "factor": value / maximum,
+            }
         else:
             condition["charge"]["current"] = {"current_a": value}
         try:
@@ -105,6 +127,8 @@ def validate_charge_current_sweep(document):
                 "charge_current_a": current,
                 "config": deepcopy(validated["config"]),
             }
+            if is_discharge:
+                entry["discharge_current_a"] = validated["resolved_currents"]["discharge_current_a"]
             if is_hold or is_factor:
                 entry.update(
                     cv_hold_time_s=condition["charge"]["termination"]["hold_time_s"],
@@ -122,6 +146,7 @@ def validate_charge_current_sweep(document):
         "config": deepcopy(document),
         "condition_count": len(conditions),
         "sweep_conditions": conditions,
+        **({"initial_config": initial_config} if is_discharge else {}),
     }
 
 def build_charge_current_sweep_plan(document, *, maximum_records=100000):
@@ -145,9 +170,20 @@ def build_charge_current_sweep_plan(document, *, maximum_records=100000):
             "execution_settings": settings,
             "preview": preview,
         })
-    initial_config = conditions[0]["config"]
+    initial_entry = conditions[0]
+    if "initial_config" in validated:
+        initial_config = validated["initial_config"]
+        initial_preview = execution_preview(initial_config, maximum_records=maximum_records)
+        initial_settings = settings_for(initial_config)
+        require_ceilings(initial_settings, initial_preview)
+        initial_entry = {
+            "config": deepcopy(initial_config),
+            "preview": initial_preview,
+            "execution_settings": initial_settings,
+        }
+    initial_config = initial_entry["config"]
     initial_phases = deepcopy(
-        conditions[0]["preview"]["acquisition_plan"]["phases"][2:4]
+        initial_entry["preview"]["acquisition_plan"]["phases"][2:4]
     )
     initial_discharge = {
         "stage_id": "initial_discharge",
@@ -174,7 +210,9 @@ def build_charge_current_sweep_plan(document, *, maximum_records=100000):
         "will_connect": False,
         "will_enable_output": False,
         "parameter": (
-            "charge.termination.current_factor"
+            "sweep.discharge_current_a"
+            if document["experiment"]["type"] == "discharge_current_sweep"
+            else "charge.termination.current_factor"
             if document["experiment"]["type"] == "termination_current_factor_sweep"
             else "charge.termination.hold_time_s"
             if document["experiment"]["type"] == "cv_hold_sweep"
@@ -183,7 +221,9 @@ def build_charge_current_sweep_plan(document, *, maximum_records=100000):
         "unit": ("1" if document["experiment"]["type"] == "termination_current_factor_sweep"
                  else "s" if document["experiment"]["type"] == "cv_hold_sweep" else "A"),
         "ordering": (
-            "initial_discharge_then_supplied_factor_order_then_repeat"
+            "initial_discharge_then_supplied_discharge_current_order_then_repeat"
+            if document["experiment"]["type"] == "discharge_current_sweep"
+            else "initial_discharge_then_supplied_factor_order_then_repeat"
             if document["experiment"]["type"] == "termination_current_factor_sweep"
             else "initial_discharge_then_supplied_hold_time_order_then_repeat"
             if document["experiment"]["type"] == "cv_hold_sweep"
@@ -196,6 +236,7 @@ def build_charge_current_sweep_plan(document, *, maximum_records=100000):
             for item in conditions
         ),
         "initial_discharge": initial_discharge,
+        **({"initial_preparation": initial_entry} if "initial_config" in validated else {}),
         "total_phase_count": 2 + sum(
             item["preview"]["acquisition_plan"]["phase_count"]
             for item in conditions
@@ -326,7 +367,7 @@ def execute_charge_current_sweep(document, *, sweep_id):
         Path(document["output"]["root_directory"]) / sweep_id
     ).resolve()
     specifications = [
-        ("initial_discharge", plan["conditions"][0], True),
+        ("initial_discharge", plan.get("initial_preparation", plan["conditions"][0]), True),
         *[
             (entry["condition_id"], entry, False)
             for entry in plan["conditions"]
@@ -359,6 +400,8 @@ def execute_charge_current_sweep(document, *, sweep_id):
                 if key in condition and (not initial_only or key not in
                     ("termination_current_factor", "termination_current_a"))
             },
+            **({"discharge_current_a": condition["discharge_current_a"]}
+               if not initial_only and "discharge_current_a" in condition else {}),
             "configuration": configuration,
             "execution_settings": deepcopy(condition["execution_settings"]),
             "experiment_directory": str(directory / stage_id),
@@ -491,7 +534,7 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
         raise ValueError("Exactly two sweep profiles are required.")
     snapshots = deepcopy(list(documents))
     if any(
-        document.get("experiment", {}).get("type") not in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep')
+        document.get("experiment", {}).get("type") not in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep', 'discharge_current_sweep')
         for document in snapshots
     ):
         raise ValueError("Both profiles must be charging-current sweeps.")
@@ -505,7 +548,7 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
     ]
     # Standard dual planning checks channels, resource, and distinct specimens.
     plan = build_dual_plan(
-        [sweep["conditions"][0]["config"] for sweep in sweeps],
+        [sweep.get("initial_preparation", sweep["conditions"][0])["config"] for sweep in sweeps],
         maximum_records=maximum_records,
     )
     roots = [
@@ -554,6 +597,8 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
             item["sweep_charge_current_a"] = (
                 None if condition is None else condition["charge_current_a"]
             )
+            if condition is not None and "discharge_current_a" in condition:
+                item["sweep_discharge_current_a"] = condition["discharge_current_a"]
             if condition is not None and "cv_hold_time_s" in condition:
                 item["sweep_cv_hold_time_s"] = condition["cv_hold_time_s"]
                 item["sweep_cv_hold_mode"] = condition["cv_hold_mode"]
@@ -568,12 +613,16 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
                 append_phase(phase, condition["condition_id"], condition)
         preview["sweep_plan"] = deepcopy(sweep)
         preview["required_preflight_ceiling_a"] = max(
-            condition["preview"]["required_preflight_ceiling_a"]
-            for condition in sweep["conditions"]
+            [condition["preview"]["required_preflight_ceiling_a"]
+             for condition in sweep["conditions"]]
+            + [sweep.get("initial_preparation", sweep["conditions"][0])
+               ["preview"]["required_preflight_ceiling_a"]]
         )
         preview["required_preflight_ceiling_v"] = max(
-            condition["preview"]["required_preflight_ceiling_v"]
-            for condition in sweep["conditions"]
+            [condition["preview"]["required_preflight_ceiling_v"]
+             for condition in sweep["conditions"]]
+            + [sweep.get("initial_preparation", sweep["conditions"][0])
+               ["preview"]["required_preflight_ceiling_v"]]
         )
         preview["acquisition_plan"].update(
             experiment_type=document["experiment"]["type"],
@@ -583,7 +632,9 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
         )
     plan.update(
         experiment_type=(
-            "dual_termination_current_factor_sweep"
+            "dual_discharge_current_sweep"
+            if snapshots[0]["experiment"]["type"] == "discharge_current_sweep"
+            else "dual_termination_current_factor_sweep"
             if snapshots[0]["experiment"]["type"] == "termination_current_factor_sweep"
             else "dual_cv_hold_sweep"
             if snapshots[0]["experiment"]["type"] == "cv_hold_sweep"

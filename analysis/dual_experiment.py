@@ -240,7 +240,7 @@ def analyze_batch(directory, output_directory):
         )
 
     document = _read_json(source / "dual_experiment.json")
-    if document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep'):
+    if document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep', 'dual_discharge_current_sweep'):
         return export_dual_sweep(source, destination)
     destination.mkdir(parents=True)
 
@@ -432,7 +432,7 @@ def export_dual_sweep(directory, output_directory):
         raise FileExistsError(f"Output directory already exists: {destination}")
     document = _read_json(source / "dual_experiment.json")
     _require_batch(
-        document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep'),
+        document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep', 'dual_discharge_current_sweep'),
         "Expected a dual charging-current sweep.",
     )
     validation = check_batch(source)
@@ -500,6 +500,8 @@ def export_dual_sweep(directory, output_directory):
             if "sweep_termination_current_factor" in phase:
                 row["termination_current_factor"] = phase["sweep_termination_current_factor"]
                 row["termination_current_a"] = phase["sweep_termination_current_a"]
+            if "sweep_discharge_current_a" in phase:
+                row["discharge_current_a"] = phase["sweep_discharge_current_a"]
             phases.append(row)
             if phase["sweep_stage_id"] != "initial_discharge":
                 condition_rows.setdefault(

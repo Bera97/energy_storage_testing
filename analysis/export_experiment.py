@@ -411,7 +411,7 @@ def validate_sweep(directory):
             "Stored sweep plan differs from the configured plan.",
         )
         specifications = [
-            ("initial_discharge", rebuilt["conditions"][0], True),
+            ("initial_discharge", rebuilt.get("initial_preparation", rebuilt["conditions"][0]), True),
             *[
                 (entry["condition_id"], entry, False)
                 for entry in rebuilt["conditions"]
@@ -439,6 +439,8 @@ def validate_sweep(directory):
                 "condition_index": None if initial_only else condition["condition_index"],
                 "repeat_index": None if initial_only else condition["repeat_index"],
                 "charge_current_a": None if initial_only else condition["charge_current_a"],
+                **({"discharge_current_a": condition["discharge_current_a"]}
+                   if not initial_only and "discharge_current_a" in condition else {}),
                 **(
                     {
                         key: condition[key]
@@ -585,6 +587,9 @@ def _sweep_cycle_rows(stage, phase_rows):
             "recorded_energy_ratio": ratio,
             "warning_count": charge["warning_count"] + discharge["warning_count"],
         })
+    if "discharge_current_a" in stage:
+        for row in rows:
+            row["discharge_current_a"] = stage["discharge_current_a"]
     if "cv_hold_time_s" in stage:
         for row in rows:
             row["cv_hold_time_s"] = stage["cv_hold_time_s"]
@@ -596,6 +601,8 @@ def _sweep_cycle_rows(stage, phase_rows):
     return rows
 
 def _sweep_export_fields(kind):
+    if kind in ("discharge_current_sweep", "dual_discharge_current_sweep"):
+        return ("discharge_current_a",)
     if kind in ("termination_current_factor_sweep", "dual_termination_current_factor_sweep"):
         return ("cv_hold_mode", "cv_hold_time_s",
                 "termination_current_factor", "termination_current_a")
@@ -605,6 +612,8 @@ def _sweep_export_fields(kind):
 
 
 def _sweep_summary_key(kind):
+    if kind in ("discharge_current_sweep", "dual_discharge_current_sweep"):
+        return "discharge_current_summary"
     if kind in ("termination_current_factor_sweep", "dual_termination_current_factor_sweep"):
         return "termination_factor_summary"
     if kind in ("cv_hold_sweep", "dual_cv_hold_sweep"):
@@ -616,7 +625,9 @@ def _sweep_group_rows(cycles):
     import statistics
     groups = {}
     for row in cycles:
-        if "termination_current_factor" in row:
+        if "discharge_current_a" in row:
+            key = ("discharge_current", row["charge_current_a"], row["discharge_current_a"])
+        elif "termination_current_factor" in row:
             key = (
                 "termination_factor", row["charge_current_a"], row["cv_hold_mode"],
                 row["cv_hold_time_s"], row["termination_current_factor"],
@@ -630,7 +641,9 @@ def _sweep_group_rows(cycles):
     rows = []
     for key, observations in groups.items():
         first = observations[0]
-        if key[0] == "termination_factor":
+        if key[0] == "discharge_current":
+            extra = {"discharge_current_a": first["discharge_current_a"]}
+        elif key[0] == "termination_factor":
             extra = {field: first[field] for field in _sweep_export_fields(
                 "termination_current_factor_sweep"
             )}
@@ -713,7 +726,7 @@ def export_sweep(directory, output_directory):
             **row,
             **{
                 key: stage[key]
-                for key in ("cv_hold_time_s", "cv_hold_mode",
+                for key in ("cv_hold_time_s", "cv_hold_mode", "discharge_current_a",
                             "termination_current_factor", "termination_current_a")
                 if key in stage
             },
@@ -807,6 +820,14 @@ def analyze_sweep(directory, output_directory):
     return 0
 def _print_sweep_summary(report, output_directory):
     """Present existing cycle results; no acquisition or file modification."""
+    discharge_conditions = {
+        row["condition_id"]: row["discharge_current_a"]
+        for row in report["cycles"] if "discharge_current_a" in row
+    }
+    if discharge_conditions:
+        print("Discharge-current conditions (positive magnitudes):")
+        for condition_id, current in discharge_conditions.items():
+            print(f"  {condition_id}: discharge_current={current:g} A")
     factor_conditions = {
         row["condition_id"]: (row["termination_current_factor"], row["termination_current_a"])
         for row in report["cycles"] if "termination_current_factor" in row
