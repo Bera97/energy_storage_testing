@@ -70,7 +70,7 @@ class DualPhase:
         self.config = deepcopy(
             preview["acquisition_plan"]["configuration"]
         )
-        if session.plan.get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep'):
+        if session.plan.get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep'):
             conditions = preview["sweep_plan"]["conditions"]
             stage_id = self.phase["sweep_stage_id"]
             condition = (

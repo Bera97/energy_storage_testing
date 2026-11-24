@@ -127,7 +127,7 @@ def validate_config(document):
     datasheet correctness, electrical safety, or instrument capability.
     """
     experiment = document.get("experiment") if isinstance(document, dict) else None
-    if isinstance(experiment, dict) and experiment.get("type") in ('charge_current_sweep', 'cv_hold_sweep'):
+    if isinstance(experiment, dict) and experiment.get("type") in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep'):
         from experiments.sweeps import validate_charge_current_sweep
         return validate_charge_current_sweep(document)
 

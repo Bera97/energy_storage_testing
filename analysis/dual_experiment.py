@@ -240,7 +240,7 @@ def analyze_batch(directory, output_directory):
         )
 
     document = _read_json(source / "dual_experiment.json")
-    if document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep'):
+    if document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep'):
         return export_dual_sweep(source, destination)
     destination.mkdir(parents=True)
 
@@ -414,6 +414,8 @@ def export_dual_sweep(directory, output_directory):
     from analysis.export_experiment import (
         SWEEP_CYCLE_FIELDS,
         _sweep_cycle_rows,
+        _sweep_export_fields,
+        _sweep_summary_key,
         _sweep_group_rows,
         _write_json,
         _write_sweep_csv,
@@ -430,7 +432,7 @@ def export_dual_sweep(directory, output_directory):
         raise FileExistsError(f"Output directory already exists: {destination}")
     document = _read_json(source / "dual_experiment.json")
     _require_batch(
-        document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep'),
+        document["plan"].get("experiment_type") in ('dual_charge_current_sweep', 'dual_cv_hold_sweep', 'dual_termination_current_factor_sweep'),
         "Expected a dual charging-current sweep.",
     )
     validation = check_batch(source)
@@ -447,7 +449,7 @@ def export_dual_sweep(directory, output_directory):
     is_hold_sweep = (
         document["plan"]["experiment_type"] == "dual_cv_hold_sweep"
     )
-    extra_fields = ("cv_hold_mode", "cv_hold_time_s") if is_hold_sweep else ()
+    extra_fields = _sweep_export_fields(document["plan"]["experiment_type"])
     phases = []
     cycles = []
     groups = []
@@ -495,6 +497,9 @@ def export_dual_sweep(directory, output_directory):
             if "sweep_cv_hold_time_s" in phase:
                 row["cv_hold_time_s"] = phase["sweep_cv_hold_time_s"]
                 row["cv_hold_mode"] = phase["sweep_cv_hold_mode"]
+            if "sweep_termination_current_factor" in phase:
+                row["termination_current_factor"] = phase["sweep_termination_current_factor"]
+                row["termination_current_a"] = phase["sweep_termination_current_a"]
             phases.append(row)
             if phase["sweep_stage_id"] != "initial_discharge":
                 condition_rows.setdefault(
@@ -530,7 +535,7 @@ def export_dual_sweep(directory, output_directory):
     )
     _write_sweep_csv(
         destination / (
-            "hold_time_summary.csv" if is_hold_sweep else "current_summary.csv"
+            _sweep_summary_key(document["plan"]["experiment_type"]) + ".csv"
         ),
         (
             "channel", "specimen_id", "charge_current_a", "metric", "unit",
@@ -561,7 +566,7 @@ def export_dual_sweep(directory, output_directory):
         ],
         "phases": phases,
         "cycles": cycles,
-        ("hold_time_summary" if is_hold_sweep else "current_summary"): groups,
+        _sweep_summary_key(document["plan"]["experiment_type"]): groups,
     }
     zrest.attach_rest_exports(report, source, destination)
     _write_json(destination / "summary.json", report)

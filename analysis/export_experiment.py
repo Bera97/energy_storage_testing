@@ -442,7 +442,9 @@ def validate_sweep(directory):
                 **(
                     {
                         key: condition[key]
-                        for key in ("cv_hold_time_s", "cv_hold_mode")
+                        for key in ("cv_hold_time_s", "cv_hold_mode",
+                                    "termination_current_factor", "termination_current_a")
+                        if key in condition
                     }
                     if not initial_only and "cv_hold_time_s" in condition
                     else {}
@@ -587,36 +589,63 @@ def _sweep_cycle_rows(stage, phase_rows):
         for row in rows:
             row["cv_hold_time_s"] = stage["cv_hold_time_s"]
             row["cv_hold_mode"] = stage["cv_hold_mode"]
+    if "termination_current_factor" in stage:
+        for row in rows:
+            row["termination_current_factor"] = stage["termination_current_factor"]
+            row["termination_current_a"] = stage["termination_current_a"]
     return rows
+
+def _sweep_export_fields(kind):
+    if kind in ("termination_current_factor_sweep", "dual_termination_current_factor_sweep"):
+        return ("cv_hold_mode", "cv_hold_time_s",
+                "termination_current_factor", "termination_current_a")
+    if kind in ("cv_hold_sweep", "dual_cv_hold_sweep"):
+        return ("cv_hold_mode", "cv_hold_time_s")
+    return ()
+
+
+def _sweep_summary_key(kind):
+    if kind in ("termination_current_factor_sweep", "dual_termination_current_factor_sweep"):
+        return "termination_factor_summary"
+    if kind in ("cv_hold_sweep", "dual_cv_hold_sweep"):
+        return "hold_time_summary"
+    return "current_summary"
+
 
 def _sweep_group_rows(cycles):
     import statistics
     groups = {}
     for row in cycles:
-        key = (
-            ("cv_hold", row["cv_hold_mode"], row["cv_hold_time_s"])
-            if "cv_hold_time_s" in row
-            else ("charge_current", row["charge_current_a"])
-        )
+        if "termination_current_factor" in row:
+            key = (
+                "termination_factor", row["charge_current_a"], row["cv_hold_mode"],
+                row["cv_hold_time_s"], row["termination_current_factor"],
+                row["termination_current_a"],
+            )
+        elif "cv_hold_time_s" in row:
+            key = ("cv_hold", row["cv_hold_mode"], row["cv_hold_time_s"])
+        else:
+            key = ("charge_current", row["charge_current_a"])
         groups.setdefault(key, []).append(row)
     rows = []
     for key, observations in groups.items():
-        extra = (
-            {"cv_hold_mode": key[1], "cv_hold_time_s": key[2]}
-            if key[0] == "cv_hold" else {}
-        )
+        first = observations[0]
+        if key[0] == "termination_factor":
+            extra = {field: first[field] for field in _sweep_export_fields(
+                "termination_current_factor_sweep"
+            )}
+        elif key[0] == "cv_hold":
+            extra = {"cv_hold_mode": key[1], "cv_hold_time_s": key[2]}
+        else:
+            extra = {}
         for metric, unit in SWEEP_GROUP_METRICS.items():
-            values = [
-                row[metric] for row in observations if row[metric] is not None
-            ]
+            values = [row[metric] for row in observations if row[metric] is not None]
             rows.append({
-                "charge_current_a": observations[0]["charge_current_a"],
+                "charge_current_a": first["charge_current_a"],
                 **extra,
                 "metric": metric,
                 "unit": unit,
-                "condition_count": len({
-                    row["condition_id"] for row in observations
-                }),
+                "condition_count": len({row["condition_id"] for row in observations}),
                 "cycle_count": len(observations),
                 "observation_count": len(values),
                 "mean": statistics.fmean(values) if values else None,
@@ -625,6 +654,7 @@ def _sweep_group_rows(cycles):
                 "maximum": max(values) if values else None,
             })
     return rows
+
 def _write_sweep_csv(path, fields, rows):
     with path.open("x", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
@@ -683,7 +713,8 @@ def export_sweep(directory, output_directory):
             **row,
             **{
                 key: stage[key]
-                for key in ("cv_hold_time_s", "cv_hold_mode")
+                for key in ("cv_hold_time_s", "cv_hold_mode",
+                            "termination_current_factor", "termination_current_a")
                 if key in stage
             },
             "analysis_directory": (
@@ -694,7 +725,7 @@ def export_sweep(directory, output_directory):
             cycle_rows.extend(_sweep_cycle_rows(stage, report["phases"]))
     grouped = _sweep_group_rows(cycle_rows)
     is_hold_sweep = document["plan"]["experiment_type"] == "cv_hold_sweep"
-    extra_fields = ("cv_hold_mode", "cv_hold_time_s") if is_hold_sweep else ()
+    extra_fields = _sweep_export_fields(document["plan"]["experiment_type"])
     _write_sweep_csv(
         destination / "summary.csv",
         (
@@ -708,7 +739,7 @@ def export_sweep(directory, output_directory):
     )
     _write_sweep_csv(
         destination / (
-            "hold_time_summary.csv" if is_hold_sweep else "current_summary.csv"
+            _sweep_summary_key(document["plan"]["experiment_type"]) + ".csv"
         ),
         (
             "charge_current_a", "metric", "unit", "condition_count", "cycle_count",
@@ -748,7 +779,7 @@ def export_sweep(directory, output_directory):
         ],
         "phases": phase_rows,
         "cycles": cycle_rows,
-        ("hold_time_summary" if is_hold_sweep else "current_summary"): grouped,
+        _sweep_summary_key(document["plan"]["experiment_type"]): grouped,
     }
     zrest.attach_rest_exports(report, source, destination)
     _write_json(destination / "summary.json", report)
@@ -776,6 +807,14 @@ def analyze_sweep(directory, output_directory):
     return 0
 def _print_sweep_summary(report, output_directory):
     """Present existing cycle results; no acquisition or file modification."""
+    factor_conditions = {
+        row["condition_id"]: (row["termination_current_factor"], row["termination_current_a"])
+        for row in report["cycles"] if "termination_current_factor" in row
+    }
+    if factor_conditions:
+        print("Termination factor / threshold current (A):")
+        for condition_id, (factor, threshold) in factor_conditions.items():
+            print(f"  {condition_id}: factor={factor:g}, threshold={threshold:g} A")
     has_hold = any("cv_hold_time_s" in row for row in report["cycles"])
     print(f"Sweep analysis: {Path(output_directory).resolve()}")
     if has_hold:

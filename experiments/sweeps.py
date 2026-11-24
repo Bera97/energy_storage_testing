@@ -8,7 +8,7 @@ import json
 from experiments.config import _mapping, _number, validate_config
 
 def validate_charge_current_sweep(document):
-    """Compatibility entry point expanding current or CV-duration sweeps."""
+    """Expand one supported sweep axis into validated scalar profiles."""
     _mapping(
         document, "config",
         required=(
@@ -22,29 +22,41 @@ def validate_charge_current_sweep(document):
         required=("type", "name", "cycles"),
     )
     kind = experiment["type"]
-    if kind not in ("charge_current_sweep", "cv_hold_sweep"):
-        raise ValueError("Expected charge_current_sweep or cv_hold_sweep.")
+    if kind not in (
+        "charge_current_sweep", "cv_hold_sweep", "termination_current_factor_sweep"
+    ):
+        raise ValueError("Expected a supported current, CV-hold, or termination-factor sweep.")
     is_hold = kind == "cv_hold_sweep"
+    is_factor = kind == "termination_current_factor_sweep"
     required = (
         ("repeats", "initial_discharge")
-        if is_hold else ("charge_current_a", "repeats", "initial_discharge")
+        if is_hold or is_factor else
+        ("charge_current_a", "repeats", "initial_discharge")
     )
     sweep = _mapping(document["sweep"], "sweep", required=required)
     if sweep["initial_discharge"] is not True:
         raise ValueError("sweep.initial_discharge must be true.")
-    if is_hold:
+    if is_hold or is_factor:
         charge = document["charge"]
         if not isinstance(charge, dict) or not isinstance(charge.get("termination"), dict):
             raise ValueError("CV hold sweep requires charge.termination.")
         termination = charge["termination"]
         if "cv_hold" in charge:
             raise ValueError("Use only charge.termination for CV hold selection.")
-        if termination.get("mode") not in ("from_cv_entry", "after_current_threshold"):
-            raise ValueError(
-                "CV hold sweep requires from_cv_entry or after_current_threshold."
-            )
-        values = termination.get("hold_time_s")
-        value_path = "charge.termination.hold_time_s"
+        if is_factor:
+            if termination.get("mode") != "after_current_threshold":
+                raise ValueError("Termination-factor sweep requires after_current_threshold.")
+            if termination.get("current_reference") != "configured_charge_current":
+                raise ValueError("Termination-factor sweep requires configured_charge_current.")
+            values = termination.get("current_factor")
+            value_path = "charge.termination.current_factor"
+        else:
+            if termination.get("mode") not in ("from_cv_entry", "after_current_threshold"):
+                raise ValueError(
+                    "CV hold sweep requires from_cv_entry or after_current_threshold."
+                )
+            values = termination.get("hold_time_s")
+            value_path = "charge.termination.hold_time_s"
     else:
         values = sweep["charge_current_a"]
         value_path = "sweep.charge_current_a"
@@ -61,6 +73,8 @@ def validate_charge_current_sweep(document):
     ]
     if len(set(values)) != len(values):
         raise ValueError(
+            "Duplicate termination-current factors; use sweep.repeats instead."
+            if is_factor else
             "Duplicate CV-hold durations; use sweep.repeats instead."
             if is_hold else
             "Duplicate charging-current values; use sweep.repeats instead."
@@ -71,17 +85,17 @@ def validate_charge_current_sweep(document):
     conditions = []
     for index, value in enumerate(values, 1):
         condition = deepcopy(base)
-        if is_hold:
+        if is_factor:
+            condition["charge"]["termination"]["current_factor"] = value
+        elif is_hold:
             condition["charge"]["termination"]["hold_time_s"] = value
         else:
             condition["charge"]["current"] = {"current_a": value}
         try:
             validated = validate_config(condition)
         except ValueError as error:
-            unit = "s" if is_hold else "A"
-            raise ValueError(
-                f"Sweep condition {index} ({value:g} {unit}): {error}"
-            ) from error
+            unit = "factor" if is_factor else "s" if is_hold else "A"
+            raise ValueError(f"Sweep condition {index} ({value:g} {unit}): {error}") from error
         current = validated["resolved_currents"]["charge_current_a"]
         for repeat in range(1, repeats + 1):
             entry = {
@@ -91,10 +105,17 @@ def validate_charge_current_sweep(document):
                 "charge_current_a": current,
                 "config": deepcopy(validated["config"]),
             }
-            if is_hold:
+            if is_hold or is_factor:
                 entry.update(
-                    cv_hold_time_s=value,
+                    cv_hold_time_s=condition["charge"]["termination"]["hold_time_s"],
                     cv_hold_mode=condition["charge"]["termination"]["mode"],
+                )
+            if is_factor:
+                entry.update(
+                    termination_current_factor=value,
+                    termination_current_a=validated["resolved_currents"][
+                        "charge_termination_current_a"
+                    ],
                 )
             conditions.append(entry)
     return {
@@ -102,6 +123,7 @@ def validate_charge_current_sweep(document):
         "condition_count": len(conditions),
         "sweep_conditions": conditions,
     }
+
 def build_charge_current_sweep_plan(document, *, maximum_records=100000):
     """Validate every condition, monitoring setting, ceiling, and budget."""
     from experiments.run_live import execution_preview
@@ -152,13 +174,18 @@ def build_charge_current_sweep_plan(document, *, maximum_records=100000):
         "will_connect": False,
         "will_enable_output": False,
         "parameter": (
-            "charge.termination.hold_time_s"
+            "charge.termination.current_factor"
+            if document["experiment"]["type"] == "termination_current_factor_sweep"
+            else "charge.termination.hold_time_s"
             if document["experiment"]["type"] == "cv_hold_sweep"
             else "charge.current.current_a"
         ),
-        "unit": "s" if document["experiment"]["type"] == "cv_hold_sweep" else "A",
+        "unit": ("1" if document["experiment"]["type"] == "termination_current_factor_sweep"
+                 else "s" if document["experiment"]["type"] == "cv_hold_sweep" else "A"),
         "ordering": (
-            "initial_discharge_then_supplied_hold_time_order_then_repeat"
+            "initial_discharge_then_supplied_factor_order_then_repeat"
+            if document["experiment"]["type"] == "termination_current_factor_sweep"
+            else "initial_discharge_then_supplied_hold_time_order_then_repeat"
             if document["experiment"]["type"] == "cv_hold_sweep"
             else "initial_discharge_then_supplied_current_order_then_repeat"
         ),
@@ -327,8 +354,10 @@ def execute_charge_current_sweep(document, *, sweep_id):
             ),
             **{
                 key: condition[key]
-                for key in ("cv_hold_time_s", "cv_hold_mode")
-                if key in condition
+                for key in ("cv_hold_time_s", "cv_hold_mode",
+                            "termination_current_factor", "termination_current_a")
+                if key in condition and (not initial_only or key not in
+                    ("termination_current_factor", "termination_current_a"))
             },
             "configuration": configuration,
             "execution_settings": deepcopy(condition["execution_settings"]),
@@ -462,7 +491,7 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
         raise ValueError("Exactly two sweep profiles are required.")
     snapshots = deepcopy(list(documents))
     if any(
-        document.get("experiment", {}).get("type") not in ('charge_current_sweep', 'cv_hold_sweep')
+        document.get("experiment", {}).get("type") not in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep')
         for document in snapshots
     ):
         raise ValueError("Both profiles must be charging-current sweeps.")
@@ -528,6 +557,9 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
             if condition is not None and "cv_hold_time_s" in condition:
                 item["sweep_cv_hold_time_s"] = condition["cv_hold_time_s"]
                 item["sweep_cv_hold_mode"] = condition["cv_hold_mode"]
+            if condition is not None and "termination_current_factor" in condition:
+                item["sweep_termination_current_factor"] = condition["termination_current_factor"]
+                item["sweep_termination_current_a"] = condition["termination_current_a"]
             phases.append(item)
         for phase in sweep["initial_discharge"]["phases"]:
             append_phase(phase, "initial_discharge")
@@ -551,7 +583,9 @@ def build_dual_charge_current_sweep_plan(documents, *, maximum_records=100000):
         )
     plan.update(
         experiment_type=(
-            "dual_cv_hold_sweep"
+            "dual_termination_current_factor_sweep"
+            if snapshots[0]["experiment"]["type"] == "termination_current_factor_sweep"
+            else "dual_cv_hold_sweep"
             if snapshots[0]["experiment"]["type"] == "cv_hold_sweep"
             else "dual_charge_current_sweep"
         ),
