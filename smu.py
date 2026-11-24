@@ -181,6 +181,22 @@ def _unified_main(arguments):
 
     try:
         _unified_config_paths(documents, paths)
+        power_kind = "constant_power_discharge_sweep"
+        if any(doc["experiment"]["type"] == power_kind for doc in documents):
+            if not all(doc["experiment"]["type"] == power_kind for doc in documents):
+                raise ValueError("Use one or two constant-power profiles; do not mix experiment types.")
+            if parsed.execute or parsed.analyze is not None:
+                raise ValueError(
+                    "Constant-power planning only: execution and analysis are disabled in this increment."
+                )
+            planner = import_module("experiments.power_planning")
+            plan = (
+                planner.build_constant_power_sweep_plan(documents[0])
+                if len(documents) == 1 else
+                planner.build_dual_constant_power_sweep_plan(documents)
+            )
+            print(json.dumps(plan, indent=2, allow_nan=False))
+            return 0
         if any(
             doc["experiment"]["type"] in ('charge_current_sweep', 'cv_hold_sweep', 'termination_current_factor_sweep', 'discharge_current_sweep')
             for doc in documents

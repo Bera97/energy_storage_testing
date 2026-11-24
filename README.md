@@ -594,3 +594,55 @@ through the public CLI. It is for preview and review only. Existing trial
 profiles are NOT enabled or changed by this patch. Keep their physical-test
 history intact. Validate the single small case before larger CV sweeps or dual
 physical trials. Existing failed runs are never automatically resumed.
+
+
+## Experimental constant-power planning and controller
+
+This increment adds `experiment.type: constant_power_discharge_sweep` for
+PREVIEW ONLY. Both `--execute` and `--analyze` are explicitly rejected for
+this experiment type, for one or two channels. Existing experiment types
+and their execution paths are unchanged. This is not a live CP backend.
+
+```powershell
+python -m smu --config configs/constant_power_sweep.ch1.example.yaml --preview
+python -m smu --config configs/constant_power_sweep.ch1.example.yaml --config configs/constant_power_sweep.ch2.example.yaml --preview
+```
+
+`sweep.power_w` contains unique positive power targets in supplied order;
+`sweep.repeats` and `sweep.initial_discharge: true` retain their usual meanings.
+The normal scalar `discharge` section selects constant-current initial
+preparation, cutoff and timeouts. Each later condition plans fixed charging,
+rest, a new `discharge_cp` phase, and the configured post-discharge rest.
+This planning schema is experimental and may evolve before live integration.
+
+`power_control` requires `maximum_current_a`, `update_interval_s`,
+`maximum_feedback_age_s`, `relative_tolerance`, `absolute_tolerance_w`,
+`startup_grace_s`, and `maximum_tracking_error_s`. Every condition must satisfy
+`power_w / cutoff_voltage_v <= maximum_current_a`; zero cutoff is unsupported.
+The current ceiling cannot exceed the supplied continuous discharge rating or
+resolved execution ceiling. This feasibility check does not qualify instrument
+sink capability, real-time behavior, overshoot or measured power accuracy.
+
+`experiments.constant_power.ConstantPowerController` is a pure decision engine.
+It proposes `I_command = -P_requested / V_fresh`; measured discharge power is
+`-V * I`. It requires a fresh outputs-off starting sample, explicit setpoint
+readback acknowledgement, and subsequent host-timed samples acquired after
+that acknowledgement. Old trace batches must not be relabeled as fresh samples.
+Current/voltage violations, wrong active source mode/polarity, compliance,
+faults, stale or nonmonotonic feedback, timeouts and prolonged tracking errors
+are unsuccessful terminal events. It never clamps current and silently calls
+that constant power. The cutoff is the only successful endpoint.
+
+The controller sends NO commands, enables NO outputs and performs NO shutdown.
+A future recorded adapter must apply/read back setpoints, validate status and
+sampling provenance, record samples and commands, poll the watchdog, stop both
+channels on shared-session faults, finalize evidence, and attempt output-off
+cleanup on every exit. A blocked VISA call can defeat host deadlines.
+Single/dual previews do not constitute instrument or physical qualification.
+
+The examples contain placeholder identities and illustrative powers/control
+windows. Do not turn them into hardware runs by renaming modes. Native CP
+capability is not assumed or established by this increment. Live acquisition
+integration, CP recording validation/export, and supervised hardware trials
+remain to implement. Later consumption profiles should reuse the controller;
+profile scheduling and leakage testing are not part of this change.
