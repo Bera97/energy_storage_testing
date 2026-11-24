@@ -117,7 +117,8 @@ class ConstantPowerController:
     Times share one host-monotonic clock. acquired_at_s is a conservative
     acquisition start time, not arrival time or an unmapped instrument timestamp.
     Feedback after a command must have been acquired AFTER its acknowledgement.
-    The first sample is supplied with outputs verified OFF by the future adapter.
+    start() is retained for pure tests with a supplied outputs-off sample.
+    Recorded spot acquisition instead uses the explicit zero-current probe API.
     """
     def __init__(self, limits):
         if not isinstance(limits, PowerLimits):
@@ -131,6 +132,8 @@ class ConstantPowerController:
         self.last_request_s = None
         self.pending_current_a = None
         self.bad_tracking_since_s = None
+        self.probe_enabled_s = None
+        self.maximum_probe_current_a = None
 
     def _now(self, value):
         now = _number(value, "host time", zero=True)
@@ -142,7 +145,8 @@ class ConstantPowerController:
     def _deadline(self, now):
         if now - self.started_s >= self.limits.maximum_duration_s:
             raise PowerTimeoutError("Constant-power phase duration exceeded.")
-        if self.last_sample_s is not None and now - self.last_sample_s > self.limits.maximum_feedback_age_s:
+        reference = self.started_s if self.last_sample_s is None else self.last_sample_s
+        if now - reference > self.limits.maximum_feedback_age_s:
             raise PowerTimeoutError("Constant-power feedback is stale.")
         if (self.bad_tracking_since_s is not None and
                 now - self.bad_tracking_since_s >= self.limits.maximum_tracking_error_s):
@@ -249,7 +253,50 @@ class ConstantPowerController:
 
     @_terminal_on_error
     def watchdog(self, *, now_s):
-        if self.state not in ("active", "awaiting_setpoint"):
+        if self.state not in ("active", "awaiting_setpoint", "probe_armed", "probing"):
             raise PowerControlError("No active power-control phase.")
         now = self._now(now_s)
         self._deadline(now)
+
+    @_terminal_on_error
+    def arm_zero_current_probe(self, *, now_s, outputs_verified_off,
+                               current_source_verified, zero_current_setpoint_a,
+                               maximum_probe_current_a):
+        """Start the phase deadline before explicit zero-current probe activation.
+
+        These arguments are readback evidence supplied by the adapter, not
+        independent electrical verification. No output command is sent here.
+        """
+        if self.state != "new":
+            raise PowerControlError("Use a fresh controller for each phase.")
+        if outputs_verified_off is not True or current_source_verified is not True:
+            raise PowerControlError("Probe setup must report output OFF and current-source mode.")
+        level = _number(zero_current_setpoint_a, "probe setpoint", signed=True)
+        ceiling = _number(maximum_probe_current_a, "maximum_probe_current_a")
+        if level != 0 or ceiling > self.limits.maximum_current_a:
+            raise PowerControlError("Probe requires a verified zero setpoint and a valid current ceiling.")
+        self.started_s = self._now(now_s)
+        self.maximum_probe_current_a = ceiling
+        self.state = "probe_armed"
+
+    @_terminal_on_error
+    def confirm_zero_current_probe_enabled(self, *, now_s, output_reported_on):
+        if self.state != "probe_armed" or output_reported_on is not True:
+            raise PowerControlError("Explicit probe activation must be verified before sampling.")
+        now = self._now(now_s)
+        self._deadline(now)
+        self.probe_enabled_s = now
+        self.state = "probing"
+
+    @_terminal_on_error
+    def start_from_zero_current_probe(self, *, now_s, sample):
+        if self.state != "probing":
+            raise PowerControlError("An explicitly enabled zero-current probe is required.")
+        now = self._now(now_s)
+        self._deadline(now)
+        sample = self._sample(sample, now, starting=True)
+        if sample.acquired_at_s < self.probe_enabled_s:
+            raise PowerFeedbackError("Probe sample predates verified probe activation.")
+        if not sample.current_source or abs(sample.current_a) > self.maximum_probe_current_a:
+            raise PowerFeedbackError("Probe source mode or measured near-zero current is invalid.")
+        return self._decide(sample, now, starting=True)

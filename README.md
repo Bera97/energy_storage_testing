@@ -625,9 +625,11 @@ sink capability, real-time behavior, overshoot or measured power accuracy.
 
 `experiments.constant_power.ConstantPowerController` is a pure decision engine.
 It proposes `I_command = -P_requested / V_fresh`; measured discharge power is
-`-V * I`. It requires a fresh outputs-off starting sample, explicit setpoint
-readback acknowledgement, and subsequent host-timed samples acquired after
-that acknowledgement. Old trace batches must not be relabeled as fresh samples.
+`-V * I`. The pure `start()` entry remains available for supplied test samples.
+Recorded spot acquisition instead uses an explicit verified zero-current
+probe, because the existing spot API requires output already ON. Subsequent
+feedback must be acquired after current-setpoint acknowledgement. Old trace
+batches must not be relabeled as fresh samples.
 Current/voltage violations, wrong active source mode/polarity, compliance,
 faults, stale or nonmonotonic feedback, timeouts and prolonged tracking errors
 are unsuccessful terminal events. It never clamps current and silently calls
@@ -646,3 +648,57 @@ capability is not assumed or established by this increment. Live acquisition
 integration, CP recording validation/export, and supervised hardware trials
 remain to implement. Later consumption profiles should reuse the controller;
 profile scheduling and leakage testing are not part of this change.
+
+### Recorded constant-power simulation adapter
+
+This increment does NOT enable hardware or public CP analysis. It adds
+`experiments.power_adapter.run_simulated_power_phase` and
+`recording.power_simulation.PowerSimulationRecording` with injected backend,
+monotonic clock and sleep callables. A backend must explicitly declare
+`simulation_only = True`; this is a caller contract, not a sandbox. No concrete
+SMU transport is supplied, and no driver or VISA import occurs in these modules.
+One invocation owns one simulated phase and its backend/session. This is not
+an independent-progress shared-session dual-channel execution adapter.
+
+The existing `SpotAcquisition.read()` requires output already ON and provides
+one paired VOLT,CURR,TIME,STAT record. The adapter therefore models startup as:
+1. Configure/verify selected output OFF, automatic output-on OFF, current source,
+   zero current setpoint and reviewed upper voltage compliance.
+2. Arm the phase/initial-feedback deadlines and explicitly enable a zero-current
+   probe; verify output ON before requesting a fresh paired sample.
+3. Check the probe's measured current against an explicit small current ceiling.
+   The probe can affect the specimen; it is not an open-relay voltage measurement.
+4. Request power-regulating current, verify each setpoint readback, and require
+   subsequent acquisition to begin after that acknowledgement.
+
+The adapter retains raw instrument timestamps without assuming continuity across
+spot queries. Host acquisition-start/end brackets govern controller timing;
+the backend must perform a fresh paired acquisition during each read call.
+These brackets do not independently prove freshness. Separate voltage/current
+queries or queued old trace data must not be passed off as a fresh paired record.
+The adapter preserves valid returned raw records before controller evaluation,
+records decisions and command/readback events, and performs bounded-wait watchdog
+polling. Blocking I/O, file writes and session close remain outside hard real-time
+guarantees. Startup grace does not disable voltage/current/fault/staleness checks.
+
+Exclusive simulation directories contain:
+- `power_simulation.json`: supplied settings, lifecycle and cleanup outcome.
+- `power_samples.csv`: probe/discharge stages, host brackets, raw timestamps,
+  channel, voltage, current, requested power, measured discharge power and status.
+- `power_events.jsonl`: setup, activation, decision and command/readback events.
+- `SIMULATION_COMPLETE`: only after cutoff and successful cleanup/file closure.
+
+Every owned-run exit attempts shutdown-all, both-output state readbacks and
+session close, independently of logging failures. Primary exceptions are kept;
+secondary cleanup/export errors are attached rather than replacing the primary.
+No automatic retry/resume or overwrite is implemented. Evidence flush is not an
+fsync/power-loss guarantee; partial exports must be preserved. A marker alone is
+not validation, and these files are NOT accepted as ordinary hardware evidence.
+There is no ordinary `COMPLETE`, `DUAL_COMPLETE` or `ANALYSIS_COMPLETE` marker.
+
+The existing single/dual CP preview remains unchanged and public `--execute`
+and `--analyze` remain rejected for CP profiles. The virtual-clock simulations
+exercise contracts, not physical timing, electrochemistry, measurement accuracy
+or electrical isolation. Real transport/setup qualification, recorded hardware
+schema integration, shared-session dual scheduling, persisted-evidence validation,
+and CP analysis remain deferred before any supervised CP hardware trial.
