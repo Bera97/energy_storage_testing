@@ -161,6 +161,61 @@ establish hardware readiness.
 - References may be absolute. Copied recordings can retain original paths; do not silently rewrite evidence or guess another phase directory. Explicit phase-root overrides are available through the analysis APIs; the public flag interface does not expose that override.
 - Keep raw evidence and generated analysis out of source commits. `.gitignore` does not untrack already committed files.
 
+## Constant-current discharge sweeps
+Use `experiment.type: discharge_current_sweep` with fixed scalar charge
+settings and the normal required experiment sections. Add:
+```yaml
+sweep:
+  discharge_current_a: [0.4, 0.35]
+  repeats: 1
+  initial_discharge: true
+```
+These are positive current magnitudes in amperes, not universally safe limits.
+Values must be finite, positive, distinct, within the supplied continuous
+discharge rating, and valid under acquisition and execution limits.
+Supplied order is preserved, with repeats grouped under each value.
+Do not combine multiple sweep axes.
+The scalar `discharge.current` basis/factor mapping selects the initial
+preparation discharge current independently of the sweep list.
+Initial discharge and its following rest occur once before the first condition.
+Every condition then performs its configured complete charge/rest/discharge/rest
+cycles with unchanged charge settings, cutoff, timeouts, and rest configuration.
+Rest follows the selected mode: outputs off or explicit zero-current logging.
+A common procedure does not independently establish identical physical state
+of charge across conditions.
+Requested amperes are expanded into the equivalent rated-discharge fractions
+for the existing scalar backend. Inspect resolved ampere values in preview;
+minor floating-point differences in the internal fractions are possible.
+All conditions and initial preparation are planned before hardware connection.
+A timeout or failed stage stops progression; there is no automatic retry/resume.
+Preview the illustrative profiles without connecting:
+```powershell
+python -m smu --config configs/discharge_current_sweep.ch1.example.yaml --preview
+python -m smu --config configs/discharge_current_sweep.ch1.example.yaml --config configs/discharge_current_sweep.ch2.example.yaml --preview
+```
+Use the existing `--execute --analyze` or offline `--analyze RUN_NAME`
+interface with reviewed profiles. Examples contain placeholder identities.
+Dual sweeps require the same experiment type on both channels, distinct
+specimens, matching resources and output locations, and one shared session.
+Both initial preparations must complete before either channel charges.
+Subsequent progression is independent; a fault attempts stop-both cleanup.
+Analysis includes `discharge_current_a` in phase/cycle comparisons and
+`discharge_current_summary.csv`, grouped by discharge and charge current.
+Dual statistics remain separate by channel/specimen. Initial preparation is
+excluded from condition comparisons. On a charge-phase row,
+`discharge_current_a` labels the condition's later discharge, not measured
+charging current. Signed charge retains its measurement sign; directional
+energy magnitudes and recorded energy ratios are not independently established
+device efficiency. Recorded spans cover samples, not exact output-enable time.
+Hardware evidence recorded on 2026-11-24:
+`20261124_155335_discharge_current_trial_ch1`, specimen `7&8`, channel 1,
+initial discharge 0.4 A, charging 0.4 A, and one condition each at 0.4 A
+and 0.35 A discharge. All 10 phases completed; saved validation checked five
+active recordings, all discharge endpoints were `voltage_min`, and all three
+stage sessions recorded verified shutdown and successful closure.
+Charge-compliance warnings remain recorded and require phase-aware interpretation.
+This is limited single-channel evidence, not dual-channel qualification or
+independent verification of physical ratings, calibration, or protection.
 ## Developer commands
 ```powershell
 python -m pyflakes smu.py drivers acquisition experiments recording analysis checks tests
@@ -223,22 +278,22 @@ independent proof that every underlying resource closed.
 | `checks/` | Explicit developer diagnostics; not run automatically |
 | `tests/` | Offline regression tests |
 ## Extension points and deferred experiments
-The implemented procedure remains preconditioning:
-CC-CV charge, rest, constant-current discharge, rest.
-Future work includes separate-test sweeps of charging current, successful
-fixed-duration CV holding, discharge current, and constant discharge power,
-plus time-variable/pulsed current and power discharge.
-These modes are not implemented by this structural refactor.
-Changing YAML experiment or mode names does not enable them.
-Keep future responsibilities separate:
-- Planning selects test conditions and constructs phase sequences.
+Implemented experiment types include preconditioning, charging-current sweeps,
+CV-hold duration sweeps, termination-current-factor sweeps, and constant-current
+discharge sweeps. See their configuration and execution sections.
+The scalar cycle remains CC-CV charge, rest, constant-current discharge, rest.
+Deferred work includes constant-power discharge sweeps, selectable current/power
+consumption profiles with repeat-until-cutoff behavior, and dedicated leakage
+tests. Changing YAML names alone does not implement these procedures.
+Keep responsibilities separate:
+- Planning selects conditions and constructs phase sequences.
 - Controllers determine phase setpoints and successful termination.
-- Setup configures the instrument and acquisition with outputs off.
+- Setup configures instrument and acquisition with outputs off.
 - Execution coordinates activation, monitoring, stopping, and finalization.
-- Recording retains raw evidence; analysis interprets completed evidence.
-Existing termination hold time means consecutive qualifying CV/current
-observations. Maximum CV duration remains a failure timeout, not successful
-completion of a timed CV hold.
+- Recording retains evidence; analysis interprets completed evidence.
+Charge termination follows the selected `charge.termination.mode`.
+Protective maximum charge/CV durations remain failure timeouts, not successful
+holding periods.
 ## Charging-current sweep planning
 `experiments/sweeps.py` contains sweep validation, expansion, and planning.
 The existing preconditioning planner remains unchanged.
