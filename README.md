@@ -1060,3 +1060,42 @@ completion with a CP peer, both rest modes, failure/interrupt finalization, file
 corruption, source-plan changes and no driver I/O after close. No hardware was run.
 This increment is NOT the dual CP coordinator, full-sweep recording/replay/analysis,
 public CP dispatch or bench qualification. Those integration gates remain closed.
+
+### Internal shared native/CP acquisition coordinator (no public DUT dispatch)
+
+`experiments.power_shared_coordinator.run_shared_power_sweep` now interleaves the
+borrowed native CC/CV/rest phases with actual CP decision controllers. It requires
+a fresh, explicitly authorized `SharedPowerSession` over an already-connected
+session, explicit sleep and per-channel probe ceilings, and execute_requested=True.
+There is no connection factory, default clock/sleep, new CLI or reconnect/resume.
+Preflight rejection leaves session responsibility with the caller. The owning
+context takes cleanup responsibility at entry, including entry failures.
+
+Canonical channel queues share an initial discharge/rest barrier, then progress
+independently with deadline-aware round-robin service and bounded scheduler/CP
+sample budgets. Unequal condition/repeat counts and one channel finishing early
+are supported. Native callbacks, CP transport calls, controller work, event writes,
+phase transitions and sleeps are guarded for both channels. Current commands are
+acknowledged before further active CP feedback. Only the outer owner stops/closes
+the whole session; normal per-channel completion releases only its own lease.
+Callbacks remain cooperative/nonpreemptible: watchdog overrun detection occurs
+at control points, not as a guaranteed asynchronous emergency stop.
+
+Native stage directories retain their existing recorded evidence. A flushed
+`events.jsonl` journals stage identity/transitions, probe setup/activation, paired
+CP frames with host brackets and raw instrument timestamps, decisions, requested
+currents and acknowledgements. CP sample_count counts frames delivered to decision
+logic; raw/fault evidence may also exist in the journal for an interrupted callback.
+`dual_power_acquisition.json` retains per-channel progress/interrupted stages,
+cleanup evidence, journal closure status and file SHA-256/size bindings. Fault
+frames are persisted after stop-both where available; persistence failures must
+not replace the primary exception. Output trees must not be modified concurrently.
+
+A return is `acquisition_completed_unreplayed`, always with completion_qualified,
+whole_sweep_replay_available, physical_qualification and joint_timing_qualified
+FALSE. No whole-sweep COMPLETE marker is created. This diagnostic schema is not
+the existing single-sweep schema and must not be analyzed as an ordinary completed
+sweep. File hashes bind recorded bytes but are not replay or authenticity proof.
+Whole-sweep replay/validation, qualified analysis/exports, public CP dispatch and
+bench envelope/timing qualification remain outstanding. Existing simulation-only
+entry points and public CP execution/analysis gates remain unchanged.
