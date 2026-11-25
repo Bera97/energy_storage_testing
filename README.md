@@ -801,3 +801,62 @@ analysis. Public CP `--execute`/`--analyze` remain disabled; no new public flags
 hardware commands are introduced by the shared engine. Sweep execution, shared-
 session independent dual scheduling, energy/comparison analysis, physical operating-
 envelope/timing review and supervised hardware qualification remain deferred.
+
+### Internal single-channel constant-power sweep coordinator
+
+`experiments.recorded_power_sweep.run_recorded_power_sweep` now binds the canonical
+CP plan to recorded single-channel stage execution. This is an INTERNAL,
+PHYSICAL-CAPABLE API, not a public command. Do not invoke it on a DUT as a shortcut
+to hardware qualification. Public CP execution and analysis remain disabled.
+No connection factory default, CLI flag, automatic retry/resume or analysis export
+is introduced. `RecordedPowerSweepBackend` requires explicit output authorization,
+a reviewed probe-current ceiling, monitoring settings, clock/sleep, and an injected
+session factory. Factory injections are trusted dependencies, not a sandbox.
+
+The sequence is initial CC discharge/rest ONCE, then unchanged charge/rest/CP
+discharge/rest cycles for each supplied power and repeat in canonical order.
+Condition and repeat identity, native cycle/phase index, specimen, settings and
+full configuration snapshots are retained in exclusive `stage_00000` directories.
+The source configuration is not modified, and the legacy CC current is not replaced
+with a power-derived preparation current. Native CC/CP recording schemas remain
+separate and unchanged.
+
+There is ONE NEW OWNED SESSION PER STAGE. The factory must return an already-
+connected B2902B driver at the configured address/serial with both outputs OFF.
+Until it returns, it owns cleanup of failed connection attempts. No instrument is
+opened on preview, constructor validation, rejected authorization, existing-root
+rejection, or recording allocation failure. The stage wrapper independently
+attempts shutdown-all, each channel's OFF readback and close; the native CP runner
+owns its own cleanup/close, so the wrapper does not query that session afterward.
+Primary exceptions and interrupts survive secondary cleanup/export failures.
+
+Session opening, preparation and closure introduce additional gaps. Configured
+rest durations describe the explicit rest stages, not a guaranteed interval from
+the preceding physical output transition. Stage host brackets retain those gaps;
+this is not seamless timing, physical electrical isolation, or a qualified cell
+protocol. Shared-session independent dual scheduling is NOT implemented here.
+
+Before opening a session, `power_sweep.json` identifies the pending stage and
+`stage.json` records its request. A returned stage must pass persisted validation
+before another stage opens. Failures stop progression, preserve partial files,
+make the backend terminal and do not create successful sweep completion evidence.
+Only after every stage passes is a digest-bound `POWER_SWEEP_COMPLETE` written;
+successful API return also requires full sweep revalidation. Ordinary `COMPLETE`
+is used only by native CC/rest child schemas, never as the sweep completion marker.
+
+`analysis.power_sweep.validate_power_sweep(directory)` is read-only. It rebuilds
+the canonical sequence and verifies stage order/identity, configuration, cleanup,
+file manifests, native CC CSV/status/trigger consistency and CC monitor replay,
+native CP controller replay, and OFF-rest or measured-rest evidence. It re-reads
+stage manifests and file digests at completion. Digests are not signatures or
+proof of physical operation; coherently fabricated evidence can pass. Re-reading
+is not a transactional snapshot, and flush/replace is not fsync/power-loss safety.
+Do not mutate recordings while executing or validating. Failed/unfinalized sweeps
+are invalid as completed experiments. Legacy measured-rest absolute references
+remain strict, so relocation/portable analysis export is not provided here.
+
+Tests exercise native CC/CP/rest recorders with fake instruments, including full
+multi-condition/repeat/cycle sequences and failure gates. They do not establish
+source/sink operating envelope, real latency, accuracy, protection or calibration.
+Energy/comparison analysis, public dispatch, shared-session dual operation and
+supervised physical qualification are still required before feature release.
