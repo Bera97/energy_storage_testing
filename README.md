@@ -914,3 +914,56 @@ Digests are not signatures/physical proof. Re-reads are not atomic snapshots;
 keep source unchanged throughout analysis/export. Flush/replace is not fsync or
 power-loss durability. Fake-driver/numeric tests do not qualify timing, calibration
 or hardware operation. Public dispatch and independent dual CP remain unfinished.
+
+### Simulation-only independent dual CP scheduling foundation
+
+`experiments.power_dual_scheduler.run_dual_power_simulation` accepts two canonical
+CP profiles, one fresh `SimulatedDualPowerInstrument` and explicit per-channel
+probe-current ceilings. This API is SIMULATION ONLY, with one virtual clock and
+one controlling thread. There is no physical-mode flag, connection factory,
+SCPI/VISA access, native recorder, public command or output-authorization path.
+A real single-phase backend is rejected even if its simulation flag is changed.
+Injected subclasses/methods are trusted tests, not a security sandbox.
+
+Each channel retains its own canonical stage queue, specimen/configuration,
+condition/repeat/cycle identity, CP controller, samples, decisions and current
+acknowledgements. Initial CC discharge/rest occurs once per channel; neither may
+start its first condition until BOTH initial preparations pass synthetic stage
+finalization. Thereafter channel queues advance independently, with no per-cycle
+or per-power lockstep. A finished channel remains OFF while the peer continues.
+
+CP stages exercise the actual `ConstantPowerController`: explicit zero-current
+probe activation, fresh channel/stage-labelled samples, negative current proposals,
+readback acknowledgement, cutoff, sample budget and watchdogs. Readiness favors
+due CP feedback with earliest watchdog deadlines, with deterministic tie rotation.
+Callbacks are serialized; all active CP watchdogs/stage deadlines are checked
+before and after callbacks, including work for the other channel. Virtual peer
+output state is checked around channel-local operations. Shared configuration and
+whole-session shutdown/close belong ONLY to the outer owner, never normal stage
+completion. A frozen/backwards clock, stale feedback, bad acknowledgement,
+tracking fault, invalid endpoint, failed local finalization or callback overrun
+fails the whole simulation and prevents further normal stage progression.
+
+Cleanup independently attempts global stop, each channel stop and output-state
+readback, and virtual-session close. Primary exceptions/interrupts survive
+secondary failures; known-ON cleanup readbacks remain visible. Failure reports
+are attached as `error.dual_power_simulation_report`. Backends are single-use;
+there is no retry/resume. Reports always identify simulation origin and explicitly
+deny hardware execution, physical qualification and joint timing qualification.
+No recording directory or native completion marker is created.
+
+IMPORTANT LIMITS: CC and rest endpoints are SYNTHETIC; this increment does not run
+native CC/CV/discharge/rest acquisition monitors or persist/replay their evidence.
+Simulated measured rests produce NO measurement samples. Virtual voltages/currents
+are test data, not an electrochemical/device model. Cooperative checks detect a
+slow callback AFTER it returns; they cannot preempt blocking I/O or guarantee
+shutdown latency. Do not treat this as a shared-session hardware backend or a
+native recorded dual sweep, and do not analyze its reports as physical results.
+
+Physical dual CP still requires channel-scoped preparation/activation/stop,
+verified shared-session transport, interleaved native CC/rest acquisition, native
+recording/failure evidence and replay, and real timing/envelope qualification.
+Do NOT run two single-channel CP backends against the instrument: their
+whole-session preparation/shutdown/close contracts are intentionally unchanged.
+Public CP `--execute` and `--analyze` remain disabled; all existing single-channel
+recording/analysis and ordinary dual-CC paths remain unchanged.
