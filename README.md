@@ -860,3 +860,57 @@ multi-condition/repeat/cycle sequences and failure gates. They do not establish
 source/sink operating envelope, real latency, accuracy, protection or calibration.
 Energy/comparison analysis, public dispatch, shared-session dual operation and
 supervised physical qualification are still required before feature release.
+
+### Internal offline CP sweep analysis and derived exports
+
+`analysis.analyze_power_sweep.analyze_power_sweep(source)` is read-only and accepts
+only fully validated, completed single-channel CP sweep recordings. It validates
+before and after calculation and checks a frozen inventory of all declared source
+files. No backend, session, public command or instrument operation is introduced.
+Public CP `--execute` and `--analyze` remain disabled.
+
+Quantities use the existing `analysis.energy_charge` trapezoidal integration of
+sampled current and sampled V*I. Signed current/power retain positive-into-DUT
+sign; positive/negative totals are separate nonnegative magnitudes. Each phase
+is integrated independently without extrapolation or joining phase/session gaps:
+- CC preparation/charge: continuous within-trace instrument timestamps, only
+  through the recorded triggering sample; retained post-trigger records excluded.
+- CP discharge: ONLY `power_discharge` samples, including the cutoff sample;
+  the zero-current probe and probe-to-first-loaded-sample interval are excluded.
+  Timestamps are host read-bracket MIDPOINT ESTIMATES, not raw instrument times.
+  Raw independent spot timestamps remain in the derived CSV and may repeat/reset.
+- Measured zero-current rest: relative host read-bracket midpoint estimates;
+  residual terminal exchange remains separate, never called internal self-discharge.
+- Outputs-OFF rest: no measured V/I, so integrated totals are NULL, not zero.
+  Zero/one analysis sample likewise supplies no integration interval: totals are
+  NULL even though a one-sample cumulative series starts at zero by convention.
+
+The initial CC preparation is reported separately by scope and excluded from cycle
+comparisons. Cycle rows match charge/CP discharge by condition/repeat/cycle, never
+across conditions. Energy/coulomb ratios use observed discharge negative-magnitude
+and charge positive-magnitude integrals only. They are NOT full-cycle thermodynamic
+efficiencies, may exceed one, are not clamped, and are null for absent coverage or
+zero denominators. CC and CP have different recorded time bases. Condition means
+are arithmetic means of observed cycles; sample standard deviation needs at least
+two observed cycles. Probe, activation and inter-stage gaps are not accounted for.
+
+`analysis.export_power_sweep.export_power_sweep_analysis(source, destination)`
+refuses existing destinations or locations inside/enclosing source. The parent
+must exist. It writes phase-wise `phase_samples/stage_00000.csv`,
+`phase_summary.csv`, `cycle_comparison.csv`, `condition_summary.csv`, `analysis.json`
+and a digest-bound `POWER_ANALYSIS_COMPLETE`. Source identity/configuration,
+coverage/time policies, exclusions, read-bracket widths, warnings and raw-source
+file hashes are retained. Samples are processed phase-wise, not accumulated
+across the whole sweep. Errors/interrupts retain partial output without valid
+completion, and failure-export errors do not replace the primary exception.
+
+`validate_power_sweep_analysis(destination)` checks derived file digests, canonical
+identities, sample/summary counts, timestamp policies, cumulative calculations,
+phase totals, cycle ratios and condition statistics. This DERIVED-ONLY export is
+portable for that internal consistency check; it is NOT a portable raw recording
+archive. Retain the original raw source for independent replay and provenance.
+Legacy measured-rest absolute references still restrict relocating raw sweeps.
+Digests are not signatures/physical proof. Re-reads are not atomic snapshots;
+keep source unchanged throughout analysis/export. Flush/replace is not fsync or
+power-loss durability. Fake-driver/numeric tests do not qualify timing, calibration
+or hardware operation. Public dispatch and independent dual CP remain unfinished.
