@@ -702,3 +702,47 @@ exercise contracts, not physical timing, electrochemistry, measurement accuracy
 or electrical isolation. Real transport/setup qualification, recorded hardware
 schema integration, shared-session dual scheduling, persisted-evidence validation,
 and CP analysis remain deferred before any supervised CP hardware trial.
+
+### Dormant B2902B constant-power transport
+
+`experiments.power_smu_backend.B2902BPowerBackend` maps a single owned phase to
+an ALREADY CONNECTED driver. Import/construction does not open a session or
+send commands. Calling `prepare()` DOES communicate and change configuration;
+it is not an offline preview. This class has no CLI and is not wired to `smu`.
+
+Preparation checks model/expected serial, phase/execution ceilings and both
+outputs OFF before configuration. It aborts activity, disables automatic
+output-on, sets selected HIZ/DC/FIX/CURR, zero current, upper voltage compliance,
+sensing and paired-spot configuration. Readbacks verify zero setpoint, source
+shape/mode, voltage compliance, NPLC, sensing, off mode and both outputs OFF.
+Activation delegates to the existing `enable_dc_output` preflight and is blocked
+unless the internal constructor argument `output_authorized=True` was explicitly
+supplied. This flag is NOT physical qualification or an independent safety layer.
+There is no new public command-line authorization flag.
+
+`read_fresh()` uses the existing paired `SpotAcquisition.read()` interface.
+Valid instrument-fault records carried by `MeasurementStatusError` are returned
+with raw status intact so a future recorded hardware runner can persist them
+before treating the phase as failed. Communication failures still propagate.
+Invalid source/compliance/fault/range records make further normal transport calls
+terminal. Current commands/readbacks must stay negative and within the planned
+current ceiling; actual power control remains the separate controller's job.
+
+Cleanup is explicitly owned by the FUTURE runner, not an implicit destructor:
+shutdown-all, both-output readbacks (both attempted even if one raises), then
+session close in independent cleanup blocks. Cleanup methods remain callable
+after preparation/control failure. `close_session()` does not shut down outputs;
+`session_close_returned` is not independent proof of underlying VISA closure.
+
+`simulation_only=False` prevents this backend from being passed to the existing
+simulation runner. Do not relabel it as simulated or remove that runner's gate:
+that would mix physical operations with simulation-only evidence. No physical
+run or existing live/CC recording schema is implemented by this transport patch.
+
+This is single-phase, whole-session ownership. Paired-spot format setup and DC
+activation require both channels initially OFF; do NOT use it for independent
+live dual-channel progression. Shared-session coordination, real recorded-run
+integration and evidence validation remain to implement. Public single/dual CP
+`--execute` and `--analyze` stay disabled. Existing CC experiment paths are not
+modified. Fake-driver tests establish software contracts, not real timing,
+sink-envelope capability, accuracy, calibration or electrical isolation.
