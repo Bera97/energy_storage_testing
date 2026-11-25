@@ -967,3 +967,57 @@ Do NOT run two single-channel CP backends against the instrument: their
 whole-session preparation/shutdown/close contracts are intentionally unchanged.
 Public CP `--execute` and `--analyze` remain disabled; all existing single-channel
 recording/analysis and ordinary dual-CC paths remain unchanged.
+
+### Dormant shared-session CP transport (INTERNAL PHYSICAL-CAPABLE API)
+
+`experiments.power_shared_transport.SharedPowerSession` wraps an ALREADY CONNECTED
+`DualInstrumentSession` whose canonical preparation plan, resource and cached
+B2902B identity/serial match two CP profiles. It requires an explicit host clock;
+output authorization defaults OFF. Construction does no driver I/O and there is
+no factory, connect method, CLI, scheduler, native recorder or analysis entry.
+Do not invoke this on a DUT as a qualification shortcut.
+
+Entering an explicitly authorized context transfers cleanup responsibility BEFORE
+its first driver operation. Both outputs must report OFF; scoped stops, HIZ and
+the existing OFF-only shared grouping/format/NPLC/timer-auto-reset setup run once.
+Final OFF/auto-OFF/HIZ readbacks are required. Pre-entry validation rejection leaves
+the session with its caller; entry failure performs owner cleanup. Driver ownership
+is single-use and cannot be reclaimed for retry/resume, including after failed close.
+A foreign thread is rejected without driver I/O; the controlling thread still owns
+cleanup. Do not access or mutate the underlying session outside this owner.
+
+`owner.borrow(channel, limits, maximum_probe_current_a=...)` supplies a fresh CP
+endpoint for a canonical condition on that channel. Preparation/zero-probe
+activation, paired reads, negative current commands/readbacks and normal stop are
+channel-local. They never call the both-OFF single-channel enable helper or rerun
+`SpotAcquisition.configure` while a peer may be active. Shared group, result-format
+and timer-auto-reset readbacks are checked; peer output/source/setpoint/compliance/
+wiring/NPLC configuration is compared before/after local work. These are software
+readback checks, not proof of electrical isolation or immunity to hidden changes.
+Normal channel completion neither globally aborts nor shuts down/closes the session.
+A stopped lease cannot be reused; the owner can issue a fresh lease for that channel.
+
+Endpoint errors immediately make the whole owner terminal and attempt stop-both/
+close, even if a caller catches the exception inside the context. Suppressing that
+error cannot turn context exit into success. Valid paired fault frames are retained
+as `error.power_frame`, with `error.power_read_bracket_s` when clock validation
+succeeds. Cleanup reports are attached as `error.shared_power_cleanup_report` and
+remain available on the owner. Cleanup independently attempts global shutdown,
+scoped abort/auto-OFF/output-OFF/readbacks for BOTH channels, and one close attempt.
+Primary errors/interrupts survive secondary cleanup errors; known-ON states remain
+visible. A returned close call is not independent proof of VISA resource closure.
+
+Borrowed endpoints expose no global shutdown/close operation and are intentionally
+incompatible with the simulation-only adapter/scheduler and the owned single-phase
+recorded runner. CP decision control, watchdog scheduling and persistence belong to
+the FUTURE dual coordinator, not this transport. Fake-wire tests use actual channel,
+spot-acquisition and shared-setup helpers, including a stepped two-controller case;
+no instrument was contacted and no physical/native dual sweep was executed.
+
+This increment does NOT connect the physical transport to the simulation scheduler,
+interleave native CC/rest monitors, create native dual recordings/replay, or enable
+public CP execution/analysis. Conservative multi-query readbacks consume bus time;
+blocking callbacks are not preemptible and no shutdown-latency guarantee is made.
+Physical source/sink envelope, protection, wiring, accuracy/calibration and joint
+latency qualification remain outstanding. Existing single-channel transports,
+recordings/analysis, dual-CC paths and simulation-only gates remain unchanged.
