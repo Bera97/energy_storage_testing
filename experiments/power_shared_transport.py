@@ -247,6 +247,21 @@ class SharedPowerSession:
             self._fail(error)
             raise
 
+    def borrow_native(self, channel, request, directory):
+        """Borrow one canonical recorded CC/CV or rest phase; never a CP phase."""
+        self._thread()
+        try:
+            self._usable()
+            self._selected(channel)
+            _require(channel not in self._channels, "Channel already has a borrowed lease.")
+            from experiments.power_shared_phases import BorrowedNativePhase
+            endpoint = BorrowedNativePhase(self, channel, request, directory)
+            self._channels[channel] = endpoint
+            return endpoint
+        except BaseException as error:
+            self._fail(error)
+            raise
+
     def _cleanup(self, primary=None):
         if self.closed:
             return self._failure
@@ -279,6 +294,12 @@ class SharedPowerSession:
             report["channels"].append(evidence)
         report["session_close_returned"], _ = attempt("close_session", self._smu.close)
         report["outputs_reported_off"] = all(c["output_state"] is False for c in report["channels"])
+        # File-only native finalizers run AFTER stop-both and the close attempt.
+        # They must not re-enter normal transport or issue any driver command.
+        for channel, endpoint in tuple(self._channels.items()):
+            finalize = getattr(endpoint, "_after_owner_stop", None)
+            if finalize is not None:
+                attempt(f"finalize_native_channel_{channel}", finalize, first, _copy(report))
         self.cleanup_report, self._failure = _copy(report), first
         self.failed = first is not None
         for endpoint in self._channels.values():

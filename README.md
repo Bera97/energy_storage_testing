@@ -1021,3 +1021,42 @@ blocking callbacks are not preemptible and no shutdown-latency guarantee is made
 Physical source/sink envelope, protection, wiring, accuracy/calibration and joint
 latency qualification remain outstanding. Existing single-channel transports,
 recordings/analysis, dual-CC paths and simulation-only gates remain unchanged.
+
+### Borrowed native CC/CV and rest phases (INTERNAL PHYSICAL-CAPABLE API)
+
+`SharedPowerSession.borrow_native(channel, request, directory)` adds cooperative
+native non-CP phase leases alongside borrowed CP endpoints. A request must exactly
+match a canonical CP sweep stage, including its acquisition/rest budget, and a
+channel cannot hold both kinds of lease at once. Borrowing performs no driver I/O
+or file creation. It validates stage membership, NOT sweep ordering; the future
+coordinator must enforce queues and the initial preparation barrier.
+
+`start()`, bounded native `poll()` and `check_deadline()` reuse the existing
+`DualPhase` CC/CV/discharge monitors and `ZeroCurrentRestTask` recorder with shared
+formatting left intact. Outputs-off rest checks only its selected channel. Normal
+native completion stops/releases only that channel, so its CP peer can remain ON.
+`next_deadline_s` is a completion due time for outputs-off rest, not a failure
+limit; active/measured tasks expose their relevant failure deadline. No callback
+is preemptible and a bounded record batch does not bound a VISA operation.
+
+The shared owner is still the sole global stop/close boundary. Native phase faults
+and peer CP faults trigger owner cleanup, then file-only abort finalization of all
+outstanding native leases. No driver commands are issued by those finalizers.
+Primary errors/interrupts survive secondary recording errors, which are included
+in the owner cleanup report. A clean context exit with an unfinished started native
+phase raises rather than silently claiming completion; an unused lease creates no
+recording. The legacy standalone adapters and their cleanup behavior are unchanged.
+
+Each completed native lease writes `stage.json`, binds its files by SHA-256 and
+size, and writes `NATIVE_STAGE_COMPLETE` only after per-phase validation. The new
+read-only validator binds canonical identity, native configuration, timing,
+channel-local stop scope and existing CSV/rest validation to that phase. This is
+STRUCTURAL/LEGACY per-phase validation, not full controller replay or a native dual
+sweep completion marker. Hashes do not establish authenticity or electrical truth.
+
+Fake-wire tests use the actual channel, buffered/spot acquisition, native monitors,
+CSV/rest writers and CP transport. They exercise both channel orientations, CV/CC
+completion with a CP peer, both rest modes, failure/interrupt finalization, file
+corruption, source-plan changes and no driver I/O after close. No hardware was run.
+This increment is NOT the dual CP coordinator, full-sweep recording/replay/analysis,
+public CP dispatch or bench qualification. Those integration gates remain closed.
