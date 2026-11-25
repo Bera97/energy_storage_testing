@@ -1,4 +1,4 @@
-"""Repository integration for power planning; every execution path is blocked."""
+"""Power planning, offline analysis refusal and blocked unqualified execution."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -114,8 +114,8 @@ def test_public_preview_is_read_only(profile, tmp_path, capsys, flags):
     assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
 
 
-@pytest.mark.parametrize("flags", [["--execute"], ["--execute", "--analyze"], ["--analyze", "existing_run"]])
-def test_public_execution_and_analysis_are_explicitly_blocked(profile, tmp_path, capsys, flags):
+@pytest.mark.parametrize("flags", [["--execute"], ["--execute", "--analyze"]])
+def test_public_execution_is_explicitly_blocked(profile, tmp_path, capsys, flags):
     document = power_profile(profile)
     path = save(document, tmp_path / "power.yaml")
     assert smu.main(["--config", path, *flags]) == 1
@@ -167,3 +167,11 @@ def test_examples_match_declared_lists():
         assert not plan["execution_available"]
         documents.append(doc)
     assert not build_dual_constant_power_sweep_plan(documents)["execution_available"]
+
+
+def test_public_analysis_missing_source_is_read_only(profile,tmp_path,capsys):
+    document=power_profile(profile);path=save(document,tmp_path/"power.yaml")
+    assert smu.main(["--config",path,"--analyze","missing_run"])==1
+    assert "No recorded CP run" in capsys.readouterr().err
+    assert not Path(document["output"]["root_directory"]).exists()
+    assert not Path(document["output"]["analysis_directory"]).exists()

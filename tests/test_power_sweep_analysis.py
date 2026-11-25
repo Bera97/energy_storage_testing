@@ -308,7 +308,7 @@ def test_source_hash_inventory_mutation_is_rejected_in_derived_export(context, t
     assert not validate_power_sweep_analysis(destination)["valid"]
 
 
-def test_public_cp_analysis_remains_blocked(context, tmp_path, capsys):
+def test_public_cp_analysis_rejects_absolute_run_path(context, tmp_path, capsys):
     import smu
     import yaml
     root = source(context, tmp_path)
@@ -316,7 +316,7 @@ def test_public_cp_analysis_remains_blocked(context, tmp_path, capsys):
     path.write_text(yaml.safe_dump(context[0]))
     before = file_snapshot(root)
     assert smu.main(["--config", str(path), "--analyze", str(root)]) == 1
-    assert "planning only" in capsys.readouterr().err.lower()
+    assert "run_name must be a single recorded run-folder name" in capsys.readouterr().err.lower()
     assert file_snapshot(root) == before
 
 

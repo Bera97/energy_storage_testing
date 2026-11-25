@@ -110,6 +110,33 @@ def _unified_analyze(document, run_name):
     )
 
 
+
+def _unified_power_analyze(documents, run_name):
+    """Offline single/dual CP analysis; never opens an instrument."""
+    if (not isinstance(run_name,str) or not run_name or run_name in (".","..")
+            or "/" in run_name or chr(92) in run_name):
+        raise ValueError("RUN_NAME must be a single recorded run-folder name.")
+    if any("analysis_directory" not in doc["output"] for doc in documents):
+        raise ValueError("Set output.analysis_directory in every CP profile.")
+    source=Path(documents[0]["output"]["root_directory"])/run_name
+    destination=Path(documents[0]["output"]["analysis_directory"])/run_name
+    if not source.is_dir():
+        raise ValueError(f"No recorded CP run named {run_name!r} inside {source.parent.resolve()}.")
+    try:
+        if len(documents)==2:
+            result=import_module("analysis.export_shared_power").export_shared_power_analysis(source,destination,expected_documents=documents)
+        else:
+            contract=import_module("experiments.power_sweep_contract");stored=contract.read_json(source/"power_sweep.json")
+            contract.same(stored["configuration"],documents[0],"CLI profile differs from recorded single CP profile.")
+            checked=import_module("analysis.power_sweep").validate_power_sweep(source)
+            if checked["valid"] is not True:raise ValueError("Single CP replay failed: "+"; ".join(checked["errors"]))
+            destination.parent.mkdir(parents=True,exist_ok=True)
+            result=import_module("analysis.export_power_sweep").export_power_sweep_analysis(source,destination)
+    except (OSError,ValueError,RuntimeError) as error:
+        print(f"CP analysis failed: {error}",file=sys.stderr);return 1
+    print(json.dumps(result,indent=2,allow_nan=False));return 0
+
+
 def _unified_main(arguments):
     parser = argparse.ArgumentParser(
         prog="python -m smu",
@@ -185,9 +212,10 @@ def _unified_main(arguments):
         if any(doc["experiment"]["type"] == power_kind for doc in documents):
             if not all(doc["experiment"]["type"] == power_kind for doc in documents):
                 raise ValueError("Use one or two constant-power profiles; do not mix experiment types.")
-            if parsed.execute or parsed.analyze is not None:
+            if parsed.execute:
                 raise ValueError(
-                    "Constant-power planning only: execution and analysis are disabled in this increment."
+                    "Constant-power hardware execution is disabled pending bench envelope/timing qualification "
+                    "(planning only for hardware). Offline --analyze is available."
                 )
             planner = import_module("experiments.power_planning")
             plan = (
@@ -195,6 +223,15 @@ def _unified_main(arguments):
                 if len(documents) == 1 else
                 planner.build_dual_constant_power_sweep_plan(documents)
             )
+            if parsed.analyze is not None:
+                return _unified_power_analyze(documents,parsed.analyze)
+            for preview in (plan,*plan.get("channels",[])):
+                preview["offline_analysis_available"] = True
+                preview["limitations"] = [
+                    "Hardware execution remains disabled pending bench envelope/timing qualification.",
+                    "Offline --analyze replays recorded evidence; it does not qualify physical hardware.",
+                    "Preview does not connect or enable outputs.",
+                ]
             print(json.dumps(plan, indent=2, allow_nan=False))
             return 0
         if any(

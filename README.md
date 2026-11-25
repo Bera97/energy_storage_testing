@@ -1099,3 +1099,48 @@ sweep. File hashes bind recorded bytes but are not replay or authenticity proof.
 Whole-sweep replay/validation, qualified analysis/exports, public CP dispatch and
 bench envelope/timing qualification remain outstanding. Existing simulation-only
 entry points and public CP execution/analysis gates remain unchanged.
+
+### Shared CP replay, derived analysis and offline CLI
+
+`analysis.shared_power_replay` validates completed shared acquisition diagnostics
+without modifying them or connecting to hardware. It checks canonical channel
+queues, the initial preparation barrier, recorded host ordering and CP deadlines,
+probe/paired-feedback/decision/request/acknowledgement sequences, cleanup, strict
+journal structure and file inventories. CP decisions are replayed through the
+actual controller; native CC/CV endpoints are replayed through the trace monitors,
+and existing measured-rest/CSV validation is retained. Native phase records and
+markers are bound to their canonical channel, specimen, configuration and scope.
+
+`analysis.export_shared_power` first replays, then writes an exclusive derived
+export with phase samples, phase summaries, cycle comparisons and per-condition
+statistics. CC uses within-trace instrument timestamps; CP and measured rest use
+host read-bracket midpoint estimates. Probes and CC records after the endpoint
+are excluded. Integration uses sampled current and sampled V*I, never joins phases
+or extrapolates gaps, and gives null totals for fewer than two retained samples.
+Ratios describe observed coverage, not full-cycle thermodynamic efficiency, and
+are not clamped. Measured-rest quantities are SMU-terminal measurements, not
+internal self-discharge. Original recordings must be retained separately.
+
+Local offline interfaces (no hardware connection):
+
+- `python -m analysis.shared_power_replay RUN_DIRECTORY`
+- `python -m analysis.export_shared_power RUN_DIRECTORY NEW_EXPORT_DIRECTORY`
+- `python -m analysis.export_shared_power EXPORT_DIRECTORY --check`
+- `python -m smu --config ORIGINAL_PROFILE.yaml --analyze RUN_NAME` for an existing
+  single-channel recorded CP sweep.
+- `python -m smu --config ORIGINAL_CH1.yaml --config ORIGINAL_CH2.yaml --analyze RUN_NAME`
+  for an existing shared native/CP acquisition. Both original profiles must match
+  the recording, including shared output roots. RUN_NAME is one folder name,
+  resolved under output.root_directory, with export under output.analysis_directory.
+
+Successful derived exports have SHARED_POWER_ANALYSIS_COMPLETE. Portable derived
+validation recalculates exported sample arithmetic and checks file integrity; it
+does not revalidate unavailable original raw sources or prove source authorship.
+Raw acquisition flags/markers are NOT promoted or rewritten. Replay checks the
+recorded control points, not unrecorded callbacks or physical timing guarantees.
+Native absolute references currently require source recordings to remain at their
+recorded location. Offline sample collection is bounded to 1,000,000 points.
+The existing planning schema is retained for recording compatibility; public
+preview annotates offline analysis availability without changing canonical plans.
+Public CP hardware --execute remains disabled pending bench envelope/timing
+qualification. No simulation-only gate or other experiment execution path changes.
