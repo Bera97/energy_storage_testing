@@ -746,3 +746,58 @@ integration and evidence validation remain to implement. Public single/dual CP
 `--execute` and `--analyze` stay disabled. Existing CC experiment paths are not
 modified. Fake-driver tests establish software contracts, not real timing,
 sink-envelope capability, accuracy, calibration or electrical isolation.
+
+### Internal recorded power phase and offline validation
+
+This increment joins the controller and concrete transport through
+`experiments.recorded_power_phase.run_recorded_power_phase`. It is an INTERNAL,
+PHYSICAL-CAPABLE API, not a public CLI entry point. Do not invoke it manually on
+an attached DUT as a qualification shortcut. It requires a fresh already-connected
+`B2902BPowerBackend`, explicit `execute_requested=True`, the existing internal
+output authorization, specimen identity, reviewed limits, probe-current ceiling,
+sample budget, and explicit clock/sleep callables. It does not open a VISA session.
+Rejected preflight/existing destinations leave backend ownership with the caller.
+After successful preflight the runner owns shutdown-all, both output-state
+readbacks and session close on every exit, including recording allocation failure.
+
+A private shared phase engine drives BOTH the simulation and recorded paths;
+their guards and recorders remain separate. Simulation journals gain explicit
+controller-arm, probe-activation and acknowledgement timestamps plus decision-to-
+sample indices. The simulation-only backend gate is not relaxed or bypassed.
+The real path must not use the simulation recorder or mark its backend simulated.
+Injected fake drivers exercise the recorded path in unit tests; manifest flags
+and class names are software provenance, not independent proof of physical work.
+
+A standalone recorded phase creates an exclusive directory containing:
+- `power_phase.json`: phase/specimen/instrument settings, optional parent config
+  snapshot, lifecycle, file digests/counts, and cleanup outcome.
+- `power_samples.csv`: separate probe/discharge stages, host read brackets, raw
+  unmapped instrument timestamps, voltage/current/power and instrument status.
+- `power_events.jsonl`: setup, controller arm, explicit probe activation, linked
+  decisions, current requests/returns/readbacks/acknowledgements and cleanup.
+- `POWER_PHASE_COMPLETE`: a digest binding the final manifest, created only after
+  cutoff, successful cleanup and file closure; successful return also requires
+  validating/replaying the persisted export. Failed exports retain diagnostics
+  without a successful marker. A marker is never sufficient on its own.
+
+`analysis.power_phase.validate_power_phase(directory)` is read-only. It checks
+schema/origin, duplicate/nonfinite JSON, fixed file names and symlinks, digests,
+counts, settings, sample arithmetic/stages/channels, event order, clock brackets,
+setpoint acknowledgements, controller replay through cutoff and cleanup evidence.
+It re-reads evidence before accepting it. Raw instrument spot timestamps need not
+be continuous; host brackets govern control timing under the fresh-read contract.
+
+Digests are NOT signatures or proof of authorship; coherently fabricated evidence
+can pass. Re-reading is not a transactional filesystem snapshot. Flush/atomic
+replacement is not fsync/power-loss durability. Host cleanup brackets and reported
+output states do not establish hard shutdown timing or electrical isolation.
+`session_close_returned` is not independent proof of underlying resource closure.
+Failed/unfinalized recordings are preserved and rejected for successful validation.
+There is no retry, resume, overwrite, ordinary `COMPLETE`, or analysis export here.
+
+This remains single-phase, whole-session ownership. The new schema is not an
+ordinary CC/whole-experiment recording and is not accepted by existing whole-run
+analysis. Public CP `--execute`/`--analyze` remain disabled; no new public flags or
+hardware commands are introduced by the shared engine. Sweep execution, shared-
+session independent dual scheduling, energy/comparison analysis, physical operating-
+envelope/timing review and supervised hardware qualification remain deferred.

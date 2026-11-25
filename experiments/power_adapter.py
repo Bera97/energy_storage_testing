@@ -4,7 +4,7 @@ No driver/VISA import or concrete hardware transport. Public SMU execution stays
 blocked. An explicit simulation-only backend is required before files or I/O.
 This backend flag is a caller contract, NOT a security boundary or sandbox.
 """
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import math
 from pathlib import Path
 from experiments.constant_power import (
@@ -141,61 +141,11 @@ def run_simulated_power_phase(limits, directory, *, backend, clock, sleep,
             "timestamp_basis": "host_read_brackets; raw instrument timestamps retained unmapped",
             "freshness_basis": "backend fresh paired-read contract; not independently verified",
         })
-        recorder.event("setup_requested", host_time_s=host.now())
-        setup = backend.prepare(limits)
-        recorder.event("setup_returned", host_time_s=host.now(), readbacks=setup)
-        _validate_setup(setup, limits, channel)
-        controller.arm_zero_current_probe(
-            now_s=host.now(), outputs_verified_off=True, current_source_verified=True,
-            zero_current_setpoint_a=setup["current_setpoint_a"], maximum_probe_current_a=probe_ceiling,
-        )
-        recorder.event("probe_output_on_requested", host_time_s=host.now())
-        controller.watchdog(now_s=host.now())
-        backend.set_output(True)
-        recorder.event("probe_output_on_command_returned", host_time_s=host.now())
-        controller.watchdog(now_s=host.now())
-        output_on = backend.get_output_state()
-        controller.confirm_zero_current_probe_enabled(now_s=host.now(), output_reported_on=output_on)
-        recorder.event("probe_output_on_verified", host_time_s=host.now(), output_reported_on=output_on)
-        stage = "zero_current_probe"
-        while True:
-            if recorder.sample_count >= maximum_samples:
-                raise PowerAdapterError("Sample budget exhausted before successful cutoff.")
-            controller.watchdog(now_s=host.now())
-            started = host.now()
-            frame = backend.read_fresh()
-            finished = host.now()
-            if not isinstance(frame, PowerFrame):
-                raise PowerAdapterError("Backend did not return a paired PowerFrame.")
-            recorder.sample(asdict(frame), stage=stage, started_s=started,
-                            finished_s=finished, requested_power_w=limits.power_w)
-            if frame.channel != channel:
-                raise PowerAdapterError("Measurement channel mismatch.")
-            sample = frame.power_sample(started)
-            if stage == "zero_current_probe":
-                decision = controller.start_from_zero_current_probe(now_s=host.now(), sample=sample)
-            else:
-                decision = controller.update(now_s=host.now(), sample=sample)
-            recorder.event("control_decision", **decision.to_dict())
-            if decision.action == "stop":
-                outcome["stop_reason"] = decision.stop_reason
-                outcome["decision_stop_time_s"] = decision.host_time_s
-                break
-            if decision.action == "set_current":
-                recorder.event("current_command_requested", host_time_s=host.now(),
-                               current_setpoint_a=decision.current_setpoint_a)
-                controller.watchdog(now_s=host.now())
-                backend.set_current(decision.current_setpoint_a)
-                recorder.event("current_command_returned", host_time_s=host.now(),
-                               current_setpoint_a=decision.current_setpoint_a)
-                controller.watchdog(now_s=host.now())
-                readback = backend.get_current_setpoint()
-                recorder.event("current_readback", host_time_s=host.now(), current_setpoint_a=readback)
-                controller.acknowledge_setpoint(now_s=host.now(), readback_current_a=readback)
-                recorder.event("current_setpoint_acknowledged", host_time_s=host.now(),
-                               current_setpoint_a=readback)
-            stage = "power_discharge"
-            _wait(controller, host, sleep, started + limits.update_interval_s)
+        from experiments.power_phase_engine import drive_power_phase
+        outcome.update(drive_power_phase(
+            limits, backend=backend, controller=controller, host=host, recorder=recorder,
+            channel=channel, probe_ceiling=probe_ceiling, maximum_samples=maximum_samples, sleep=sleep,
+        ))
     except BaseException as error:
         failure = error
     finally:
