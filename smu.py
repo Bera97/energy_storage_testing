@@ -208,6 +208,22 @@ def _unified_main(arguments):
 
     try:
         _unified_config_paths(documents, paths)
+        if any(doc["experiment"]["type"] == "leakage_current_test" for doc in documents):
+            if len(documents) != 1 or documents[0]["experiment"]["type"] != "leakage_current_test":
+                raise ValueError(
+                    "Use exactly one leakage-current profile; dual-channel and mixed "
+                    "leakage runs are not supported."
+                )
+            if parsed.execute or parsed.analyze is not None:
+                raise ValueError(
+                    "Leakage-current execution and analysis are not implemented yet; "
+                    "preview only."
+                )
+            print(json.dumps(
+                import_module("experiments.leakage_planning").build_leakage_plan(documents[0]),
+                indent=2, allow_nan=False,
+            ))
+            return 0
         power_kind = "constant_power_discharge_sweep"
         if any(doc["experiment"]["type"] == power_kind for doc in documents):
             if not all(doc["experiment"]["type"] == power_kind for doc in documents):
