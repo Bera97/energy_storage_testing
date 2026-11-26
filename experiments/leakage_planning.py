@@ -12,6 +12,8 @@ MAXIMUM_RECORDS = 100000
 MAXIMUM_SEGMENTS = 20
 DEFAULT_REPORT_TIMES_S = (3600, 36000, 86400, 172800, 259200)
 DEFAULT_FINAL_WINDOW_S = 1800
+DEFAULT_READ_FAILURES = 2
+MAXIMUM_READ_FAILURES = 10
 EARLY_STOP_FIELDS = (
     "minimum_duration_s", "window_s", "relative_change",
     "check_interval_s", "consecutive_checks",
@@ -92,6 +94,13 @@ def _early_stop(value, duration):
         "relative_change": change, "check_interval_s": interval,
         "consecutive_checks": checks,
     }
+def _read_failure_limit(value):
+    if type(value) is not int or not 0 <= value <= MAXIMUM_READ_FAILURES:
+        raise ValueError(
+            "leakage.maximum_consecutive_read_failures must be an integer "
+            f"from 0 to {MAXIMUM_READ_FAILURES}."
+        )
+    return value
 def _parse(document):
     from experiments.config import _mapping, _number, validate_config
     _mapping(document, "config", required=(
@@ -105,7 +114,8 @@ def _parse(document):
         raise ValueError("experiment.cycles must be 1 for a leakage test.")
     leakage = _mapping(document["leakage"], "leakage",
         required=("maximum_duration_s", "schedule"),
-        optional=("early_stop", "report_times_s", "final_window_s"))
+        optional=("early_stop", "report_times_s", "final_window_s",
+                  "maximum_consecutive_read_failures"))
     duration = _number(leakage["maximum_duration_s"], "leakage.maximum_duration_s")
     if duration > MAXIMUM_DURATION_S:
         raise ValueError("leakage.maximum_duration_s must not exceed 259200 s (72 h).")
@@ -127,6 +137,8 @@ def _parse(document):
         "early_stop": _early_stop(leakage.get("early_stop"), duration),
         "report_times_s": _report_times(leakage.get("report_times_s"), duration),
         "final_window_s": window,
+        "maximum_consecutive_read_failures": _read_failure_limit(
+            leakage.get("maximum_consecutive_read_failures", DEFAULT_READ_FAILURES)),
     }
 def _require_budget(total, limit):
     if total > limit:
@@ -174,6 +186,7 @@ def build_leakage_plan(document, *, maximum_records=MAXIMUM_RECORDS):
         "early_stop": parsed["early_stop"],
         "report_times_s": parsed["report_times_s"],
         "final_window_s": parsed["final_window_s"],
+        "maximum_consecutive_read_failures": parsed["maximum_consecutive_read_failures"],
         "execution_settings": settings,
         **required,
         "limitations": [
