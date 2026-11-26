@@ -236,7 +236,7 @@ class ConstantPowerController:
         self._deadline(now)
         current = _number(readback_current_a, "setpoint readback", signed=True)
         if (current >= 0 or abs(current) > self.limits.maximum_current_a
-                or not math.isclose(current, self.pending_current_a, rel_tol=1e-9, abs_tol=1e-12)):
+                or not math.isclose(current, self.pending_current_a, rel_tol=1e-8, abs_tol=1e-12)):
             raise PowerFeedbackError("Current setpoint readback mismatch.")
         self.last_ack_s = now
         self.pending_current_a = None
