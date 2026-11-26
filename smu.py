@@ -137,6 +137,30 @@ def _unified_power_analyze(documents, run_name):
     print(json.dumps(result,indent=2,allow_nan=False));return 0
 
 
+def _unified_leakage_analyze(document, run_name):
+    """Offline leakage analysis; never opens an instrument."""
+    if (not isinstance(run_name, str) or not run_name or run_name in (".", "..")
+            or "/" in run_name or chr(92) in run_name):
+        raise ValueError("RUN_NAME must be a single recorded run-folder name.")
+    if "analysis_directory" not in document["output"]:
+        raise ValueError("Set output.analysis_directory in the leakage profile to use --analyze.")
+    source = Path(document["output"]["root_directory"]) / run_name
+    destination = Path(document["output"]["analysis_directory"]) / run_name
+    if not source.is_dir():
+        raise ValueError(
+            f"No recorded leakage run named {run_name!r} inside {source.parent.resolve()}."
+        )
+    try:
+        result = import_module("analysis.leakage_analysis").analyze_leakage_run(
+            source, destination, expected_document=document
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"Leakage analysis failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2, allow_nan=False))
+    return 0 if result["valid"] else 1
+
+
 def _unified_main(arguments):
     parser = argparse.ArgumentParser(
         prog="python -m smu",
@@ -214,11 +238,25 @@ def _unified_main(arguments):
                     "Use exactly one leakage-current profile; dual-channel and mixed "
                     "leakage runs are not supported."
                 )
-            if parsed.execute or parsed.analyze is not None:
-                raise ValueError(
-                    "Leakage-current execution and analysis are not implemented yet; "
-                    "preview only."
-                )
+            if parsed.execute:
+                if parsed.analyze is not None and "analysis_directory" not in documents[0]["output"]:
+                    raise ValueError(
+                        "Set output.analysis_directory in the leakage profile to use --analyze."
+                    )
+                import_module("experiments.leakage_planning").build_leakage_plan(documents[0])
+                run_name = _unified_run_name(documents[0])
+                status = import_module(
+                    "experiments.leakage_execution"
+                ).run_configured_leakage(documents[0], run_name)
+                if status != 0:
+                    if parsed.analyze is not None:
+                        print("Run did not complete; analysis skipped.", file=sys.stderr)
+                    return status
+                if parsed.analyze is not None:
+                    return _unified_leakage_analyze(documents[0], run_name)
+                return 0
+            if parsed.analyze is not None:
+                return _unified_leakage_analyze(documents[0], parsed.analyze)
             print(json.dumps(
                 import_module("experiments.leakage_planning").build_leakage_plan(documents[0]),
                 indent=2, allow_nan=False,

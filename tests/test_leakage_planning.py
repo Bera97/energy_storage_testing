@@ -48,7 +48,7 @@ def test_default_schedule_meets_requested_sample_count(profile):
     assert schedule["unused_records"] == 100000 - 97741
     assert plan["report_times_s"] == [3600.0, 36000.0, 86400.0, 172800.0, 259200.0]
     assert plan["early_stop"] == {"enabled": False}
-    assert not plan["execution_available"] and not plan["will_connect"]
+    assert plan["execution_available"] and not plan["will_connect"]
     assert json.loads(json.dumps(plan, allow_nan=False)) == plan
 def test_sample_times_are_deterministic_and_monotonic(profile):
     segments = build_leakage_plan(leakage_profile(profile))["schedule"]["segments"]
@@ -111,15 +111,8 @@ def test_public_preview_is_read_only(profile, tmp_path, capsys):
     result = json.loads(capsys.readouterr().out)
     assert result["experiment_type"] == "leakage_current_test"
     assert result["schedule"]["total_sample_count"] == 97741
-    assert not result["will_connect"] and not result["execution_available"]
+    assert result["execution_available"] and not result["will_connect"]
     assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
-@pytest.mark.parametrize("flags", [["--execute"], ["--analyze", "some_run"]])
-def test_execution_and_analysis_are_not_available_yet(profile, tmp_path, capsys, flags):
-    doc = leakage_profile(profile)
-    path = save(doc, tmp_path / "leak.yaml")
-    assert smu.main(["--config", path, *flags]) == 1
-    assert "not implemented" in capsys.readouterr().err.lower()
-    assert not Path(doc["output"]["root_directory"]).exists()
 def test_dual_leakage_is_rejected(profile, tmp_path, capsys):
     first = leakage_profile(profile)
     second = deepcopy(first)

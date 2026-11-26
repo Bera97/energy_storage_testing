@@ -165,7 +165,7 @@ def build_leakage_plan(document, *, maximum_records=MAXIMUM_RECORDS):
         "experiment_name": document["experiment"]["name"],
         "state": "preview",
         "execution_enabled": False,
-        "execution_available": False,
+        "execution_available": True,
         "will_connect": False,
         "will_enable_output": False,
         "configuration": deepcopy(document),
@@ -190,7 +190,7 @@ def build_leakage_plan(document, *, maximum_records=MAXIMUM_RECORDS):
         "execution_settings": settings,
         **required,
         "limitations": [
-            "Planning only: execution, recording and analysis are not available yet.",
+            "Supervised experimental single-channel execution via --execute; physical qualification is not established.",
             "Preview does not connect, enable outputs or create directories.",
             "Hold voltage and compliance are operator-supplied; they are not verified safe limits.",
             "Leakage includes the initial charge-up transient; interpret late-time current only.",
