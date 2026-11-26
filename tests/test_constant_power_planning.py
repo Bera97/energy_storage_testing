@@ -110,20 +110,49 @@ def test_public_preview_is_read_only(profile, tmp_path, capsys, flags):
     assert smu.main(["--config", path, *flags]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["experiment_type"] == "constant_power_discharge_sweep"
-    assert not result["execution_available"] and not result["will_connect"]
+    assert result["execution_available"] is True and not result["will_connect"]
     assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
 
 
 @pytest.mark.parametrize("flags", [["--execute"], ["--execute", "--analyze"]])
-def test_public_execution_is_explicitly_blocked(profile, tmp_path, capsys, flags):
+def test_public_execution_dispatches_to_supervised_runner(profile, tmp_path, monkeypatch, flags):
+    import experiments.power_execution as execution
     document = power_profile(profile)
+    document["output"]["file_name"] = "cp_unit"
     path = save(document, tmp_path / "power.yaml")
-    assert smu.main(["--config", path, *flags]) == 1
-    assert "planning only" in capsys.readouterr().err.lower()
-    assert not Path(document["output"]["root_directory"]).exists()
-    assert not Path(document["output"]["analysis_directory"]).exists()
-
-
+    calls, analyzed = [], []
+    def runner(doc, run_name):
+        calls.append((doc, run_name))
+        return 0
+    monkeypatch.setattr(execution, "run_configured_power_sweep", runner)
+    monkeypatch.setattr(smu, "_unified_power_analyze", lambda docs, name: analyzed.append(name) or 0)
+    assert smu.main(["--config", path, *flags]) == 0
+    assert len(calls) == 1
+    assert calls[0][0]["experiment"]["type"] == "constant_power_discharge_sweep"
+    assert calls[0][1].endswith("_cp_unit")
+    assert analyzed == ([calls[0][1]] if "--analyze" in flags else [])
+def test_failed_public_execution_skips_analysis(profile, tmp_path, monkeypatch, capsys):
+    import experiments.power_execution as execution
+    document = power_profile(profile)
+    document["output"]["file_name"] = "cp_unit"
+    path = save(document, tmp_path / "power.yaml")
+    monkeypatch.setattr(execution, "run_configured_power_sweep", lambda doc, name: 1)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Analysis must be skipped after a failed run.")
+    monkeypatch.setattr(smu, "_unified_power_analyze", forbidden)
+    assert smu.main(["--config", path, "--execute", "--analyze"]) == 1
+    assert "analysis skipped" in capsys.readouterr().err.lower()
+def test_execute_analyze_requires_analysis_directory_before_hardware(profile, tmp_path, monkeypatch, capsys):
+    import experiments.power_execution as execution
+    document = power_profile(profile)
+    document["output"]["file_name"] = "cp_unit"
+    del document["output"]["analysis_directory"]
+    path = save(document, tmp_path / "power.yaml")
+    def forbidden(*args, **kwargs):
+        pytest.fail("Hardware must not run without an analysis directory.")
+    monkeypatch.setattr(execution, "run_configured_power_sweep", forbidden)
+    assert smu.main(["--config", path, "--execute", "--analyze"]) == 1
+    assert "analysis_directory" in capsys.readouterr().err
 def test_dual_preview_and_blocked_dual_execution(profile, tmp_path, capsys):
     first = power_profile(profile)
     second = deepcopy(first)

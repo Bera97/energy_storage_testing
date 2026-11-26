@@ -282,9 +282,8 @@ Implemented experiment types include preconditioning, charging-current sweeps,
 CV-hold duration sweeps, termination-current-factor sweeps, and constant-current
 discharge sweeps. See their configuration and execution sections.
 The scalar cycle remains CC-CV charge, rest, constant-current discharge, rest.
-Deferred work includes constant-power discharge sweeps, selectable current/power
-consumption profiles with repeat-until-cutoff behavior, and dedicated leakage
-tests. Changing YAML names alone does not implement these procedures.
+Deferred work includes selectable current/power consumption profiles with
+repeat-until-cutoff behavior and dedicated leakage tests. Changing YAML names alone does not implement these procedures.
 Keep responsibilities separate:
 - Planning selects conditions and constructs phase sequences.
 - Controllers determine phase setpoints and successful termination.
@@ -1144,3 +1143,22 @@ The existing planning schema is retained for recording compatibility; public
 preview annotates offline analysis availability without changing canonical plans.
 Public CP hardware --execute remains disabled pending bench envelope/timing
 qualification. No simulation-only gate or other experiment execution path changes.
+## Constant-power discharge sweeps (experimental)
+Use `experiment.type: constant_power_discharge_sweep` with `sweep.power_w` and a
+`power_control` section; see `configs/constant_power_sweep.ch1.example.yaml`.
+```powershell
+python -m smu --config PROFILE.yaml --preview
+python -m smu --config PROFILE.yaml --execute --analyze
+python -m smu --config PROFILE.yaml --analyze RUN_NAME
+```
+- `--execute` supports one channel. Dual-channel constant power remains planning
+  and offline analysis only.
+- The zero-current probe ceiling is `rest.maximum_abs_current_a`.
+- The sequence is an initial constant-current discharge, then a charge, rest,
+  constant-power discharge and rest for each power. Each stage owns one session.
+- A failed stage marks `power_sweep.json` as `raised`; there is no retry or resume.
+  Preserve failed recordings.
+- Results always carry `physical_qualification: false`. Host feedback control and
+  timing are not independently qualified.
+- `cp_bench.py` remains a lower-level supervised runner that also requires
+  `--confirm-specimen`, `--maximum-probe-current-a` and `--run-name`.

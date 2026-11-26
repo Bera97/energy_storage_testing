@@ -213,22 +213,47 @@ def _unified_main(arguments):
             if not all(doc["experiment"]["type"] == power_kind for doc in documents):
                 raise ValueError("Use one or two constant-power profiles; do not mix experiment types.")
             if parsed.execute:
-                raise ValueError(
-                    "Constant-power hardware execution is disabled pending bench envelope/timing qualification "
-                    "(planning only for hardware). Offline --analyze is available."
-                )
+                if len(documents) != 1:
+                    raise ValueError(
+                        "Constant-power hardware execution supports one channel; "
+                        "dual-channel constant-power is planning only. "
+                        "Offline --analyze is available."
+                    )
+                if parsed.analyze is not None and "analysis_directory" not in documents[0]["output"]:
+                    raise ValueError(
+                        "Set output.analysis_directory in the CP profile to use --analyze."
+                    )
             planner = import_module("experiments.power_planning")
             plan = (
                 planner.build_constant_power_sweep_plan(documents[0])
                 if len(documents) == 1 else
                 planner.build_dual_constant_power_sweep_plan(documents)
             )
+            if parsed.execute:
+                run_name = _unified_run_name(documents[0])
+                status = import_module(
+                    "experiments.power_execution"
+                ).run_configured_power_sweep(documents[0], run_name)
+                if status != 0:
+                    if parsed.analyze is not None:
+                        print("Run did not complete; analysis skipped.", file=sys.stderr)
+                    return status
+                if parsed.analyze is not None:
+                    return _unified_power_analyze(documents, run_name)
+                return 0
             if parsed.analyze is not None:
                 return _unified_power_analyze(documents,parsed.analyze)
+            single_channel = len(documents) == 1
             for preview in (plan,*plan.get("channels",[])):
                 preview["offline_analysis_available"] = True
+                preview["execution_available"] = single_channel
                 preview["limitations"] = [
-                    "Hardware execution remains disabled pending bench envelope/timing qualification.",
+                    (
+                        "Supervised experimental single-channel execution via --execute; "
+                        "physical qualification is not established."
+                        if single_channel else
+                        "Dual-channel hardware execution remains disabled (planning only)."
+                    ),
                     "Offline --analyze replays recorded evidence; it does not qualify physical hardware.",
                     "Preview does not connect or enable outputs.",
                 ]
