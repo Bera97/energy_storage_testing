@@ -1,7 +1,10 @@
 """Constant-voltage leakage-current hold over an ALREADY CONNECTED driver.
+
 The caller owns session opening, identity checks and closing. This module sets
 up the source with the supplied helpers, enables the output, logs readings on
 the planned host schedule and ALWAYS attempts shutdown on every exit.
+Optional step-down-only current ranging keeps the measurement range fixed
+instead of letting the instrument switch ranges (see experiments.leakage_ranging).
 A completed run is a record of logging, not evidence of instrument or DUT
 qualification.
 """
@@ -14,14 +17,17 @@ import math
 import os
 from pathlib import Path
 import time
+
 from acquisition.spot_acquisition import MeasurementStatusError
 from experiments.leakage_planning import validate_leakage_test
+from experiments.leakage_ranging import StepDownRanger
+
 CSV_NAME = "leakage_samples.csv"
 METADATA_NAME = "leakage_metadata.json"
 COLUMNS = (
     "sample_index", "scheduled_s", "host_start_s", "host_end_s", "lateness_s",
     "instrument_time_s", "voltage_v", "current_a", "status", "in_compliance",
-    "read_failures",
+    "read_failures", "range_a",
 )
 RETRY_DELAY_S = 0.5
 FSYNC_INTERVAL_S = 30.0
@@ -29,14 +35,20 @@ METADATA_INTERVAL_S = 600.0
 MINIMUM_LATENESS_LIMIT_S = 2.0
 CURRENT_MARGIN = 1.1
 MAXIMUM_LOGGED_EVENTS = 500
+
+
 class LeakageRunError(RuntimeError):
     """The hold stopped because a safety, timing or read condition failed."""
+
+
 def planned_samples(segments):
     """Yield (offset_s, interval_s) for every planned sample, starting at 0."""
     yield 0.0, segments[0]["interval_s"]
     for segment in segments:
         for step in range(1, segment["sample_count"] + 1):
             yield segment["start_s"] + step * segment["interval_s"], segment["interval_s"]
+
+
 def evaluate_stabilization(times, currents, now_s, window_s):
     """Return (recent_mean, previous_mean, relative_change) or None."""
     if now_s < 2 * window_s:
@@ -52,6 +64,8 @@ def evaluate_stabilization(times, currents, now_s, window_s):
     if previous_mean == 0:
         return None
     return recent_mean, previous_mean, abs(recent_mean - previous_mean) / abs(previous_mean)
+
+
 def _write_json(path, payload):
     temporary = path.with_name(path.name + ".tmp")
     with open(temporary, "w", encoding="utf-8") as handle:
@@ -59,21 +73,36 @@ def _write_json(path, payload):
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, path)
+
+
 def _sha256(path):
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
 def _error(error):
     return {"type": type(error).__name__, "message": str(error)}
+
+
+def _overflow_only(reading):
+    return reading.range_overflow and not (
+        reading.over_voltage or reading.over_current or reading.over_temperature)
+
+
 def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
-                     configure_source, spot_factory, enable_output,
+                     configure_source, spot_factory, enable_output, set_range=None,
+                     restore_auto_range=None,
                      run_directory=None, clock=time.monotonic, sleep=time.sleep,
                      utc_now=None):
     """Run one constant-voltage hold and return the final metadata.
+
     On failure or interrupt the run is finalized (partial CSV kept, state
     failed/aborted, outputs shut down) and the original exception is raised.
+    set_range(smu, channel, range_a) must fix the current range and return its
+    readback; it is required when leakage.range_control.mode is step_down.
     """
     for name, operation in (("configure_source", configure_source),
                             ("spot_factory", spot_factory), ("enable_output", enable_output),
@@ -85,6 +114,9 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             return datetime.now(timezone.utc)
     validated = validate_leakage_test(document)
     base, leak = validated["preparation_config"], validated["leakage"]
+    control = leak["range_control"]
+    if control["mode"] == "step_down" and not callable(set_range):
+        raise ValueError("set_range must be callable when leakage.range_control.mode is step_down.")
     from experiments.config import require_charge_monitoring_settings
     monitoring = require_charge_monitoring_settings(base)
     for name, value in (("maximum_voltage_v", maximum_voltage_v),
@@ -94,6 +126,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             raise ValueError(f"{name} must be a positive finite number.")
     if maximum_voltage_v < leak["hold_voltage_v"] or maximum_current_a < leak["compliance_current_a"]:
         raise ValueError("Execution ceilings must cover the hold voltage and compliance current.")
+
     channel = base["instrument"]["channel"]
     ratings = base["dut"]["ratings"]
     limits = {
@@ -103,6 +136,8 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
         "current_a": leak["compliance_current_a"] * CURRENT_MARGIN,
     }
     early = leak["early_stop"]
+    ranger = StepDownRanger(control) if control["mode"] == "step_down" else None
+
     if run_directory is None:
         output = base["output"]
         name = output.get("file_name") or document["experiment"]["name"]
@@ -111,6 +146,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
     run_directory.mkdir(parents=True, exist_ok=False)
     csv_path = run_directory / CSV_NAME
     metadata_path = run_directory / METADATA_NAME
+
     meta = {
         "leakage_run_schema_version": 1,
         "state": "running",
@@ -130,6 +166,8 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
         "source": None,
         "read_retry_count": 0,
         "read_retry_events": [],
+        "range_control": {**control, "events": [], "increase_count": 0, "current_range_a": None,
+                          "auto_range_restored": None},
         "early_stop": {**early, "triggered": False, "stop_offset_s": None, "checks": []},
         "error": None,
         "cleanup_error": None,
@@ -145,17 +183,67 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
     writer.writerow(COLUMNS)
     handle.flush()
     _write_json(metadata_path, meta)
+
     start = None
     error = None
     outcome = "completed"
-    def read_sample(spot, index):
+
+    def manual_range():
+        return ranger is not None and ranger.range_a is not None
+
+    def log_range(action, index, offset, previous, new, readback, current):
+        events = meta["range_control"]["events"]
+        if len(events) < MAXIMUM_LOGGED_EVENTS:
+            events.append({"sample_index": index, "offset_s": offset, "action": action,
+                           "from_range_a": previous, "to_range_a": new,
+                           "readback_a": readback, "current_a": current})
+        meta["range_control"]["current_range_a"] = new
+
+    def step_up(index, offset):
+        previous = ranger.range_a
+        new = ranger.overflow(offset)
+        readback = set_range(smu, channel, new)
+        meta["range_control"]["increase_count"] = ranger.increases
+        log_range("step_up", index, offset, previous, new, readback, None)
+
+    def manual_start(index, offset):
+        new = ranger.takeover(leak["compliance_current_a"])
+        readback = set_range(smu, channel, new)
+        log_range("start_overflow", index, offset, None, new, readback, None)
+
+    def update_range(reading, index, offset):
+        if ranger.range_a is None:
+            if reading.in_compliance:
+                return
+            previous, action = None, "takeover"
+            new = ranger.takeover(reading.current_a)
+        else:
+            previous, action = ranger.range_a, "step_down"
+            new = ranger.observe(reading.current_a, offset)
+            if new is None:
+                return
+        readback = set_range(smu, channel, new)
+        log_range(action, index, offset, previous, new, readback, reading.current_a)
+
+    def read_sample(spot, index, offset):
         failures = 0
         while True:
             try:
                 return spot.read(), failures
-            except MeasurementStatusError:
-                raise
+            except MeasurementStatusError as caught:
+                if not (ranger is not None and _overflow_only(caught.reading)):
+                    raise
+                if manual_range():
+                    step_up(index, offset)
+                else:
+                    manual_start(index, offset)
             except Exception as caught:
+                if ranger is not None and "Invalid current field" in str(caught):
+                    if manual_range():
+                        step_up(index, offset)
+                    else:
+                        manual_start(index, offset)
+                    continue
                 failures += 1
                 meta["read_retry_count"] += 1
                 if len(meta["read_retry_events"]) < MAXIMUM_LOGGED_EVENTS:
@@ -166,6 +254,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
                         f"Sample {index}: {failures} consecutive read failures."
                     ) from caught
                 sleep(RETRY_DELAY_S)
+
     def check(reading, index):
         if reading.channel != channel:
             raise LeakageRunError(f"Sample {index}: reading came from channel {reading.channel}.")
@@ -176,6 +265,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             raise LeakageRunError(f"Sample {index}: {voltage:.6g} V exceeds the hold voltage tolerance.")
         if abs(reading.current_a) > limits["current_a"]:
             raise LeakageRunError(f"Sample {index}: {reading.current_a:.6g} A exceeds the compliance margin.")
+
     def hold(spot):
         times, currents = [], []
         checks_ok = 0
@@ -192,19 +282,22 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             lateness = begin - due
             if lateness > max(2 * interval, MINIMUM_LATENESS_LIMIT_S):
                 raise LeakageRunError(f"Sampling overrun: sample {index} was {lateness:.3f} s late.")
-            reading, failures = read_sample(spot, index)
+            reading, failures = read_sample(spot, index, offset)
             finish = clock()
             check(reading, index)
             writer.writerow([
                 index, offset, begin - start, finish - start, lateness,
                 reading.timestamp_s, reading.voltage_v, reading.current_a,
                 reading.status, int(reading.in_compliance), failures,
+                ranger.range_a if ranger is not None else None,
             ])
             handle.flush()
             times.append(offset)
             currents.append(reading.current_a)
             meta["recorded_sample_count"] = index + 1
             meta["maximum_lateness_s"] = max(meta["maximum_lateness_s"], lateness)
+            if ranger is not None:
+                update_range(reading, index, offset)
             if finish - last_fsync >= FSYNC_INTERVAL_S:
                 os.fsync(handle.fileno())
                 last_fsync = finish
@@ -230,6 +323,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
                         meta["early_stop"].update(triggered=True, stop_offset_s=offset)
                         return "stopped_early"
         return "completed"
+
     try:
         meta["source"] = configure_source(smu, base)
         spot = spot_factory(smu, channel)
@@ -242,6 +336,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
     except BaseException as caught:
         error = caught
         outcome = "aborted" if isinstance(caught, KeyboardInterrupt) else "failed"
+
     shutdown_verified = False
     cleanup_error = None
     try:
@@ -252,11 +347,20 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
         cleanup_error = _error(caught)
         if error is not None:
             error.add_note(f"Shutdown could not be verified: {type(caught).__name__}: {caught}")
+    if (restore_auto_range is not None and ranger is not None
+            and ranger.range_a is not None and shutdown_verified):
+        try:
+            restore_auto_range(smu, channel)
+            meta["range_control"]["auto_range_restored"] = True
+        except Exception as caught:
+            meta["range_control"]["auto_range_restored"] = False
+            meta["range_control"]["restore_error"] = _error(caught)
     try:
         handle.flush()
         os.fsync(handle.fileno())
     finally:
         handle.close()
+
     if error is None and not shutdown_verified:
         outcome = "failed"
         error = LeakageRunError("Shutdown could not be verified.")

@@ -29,7 +29,8 @@ def test_small_run_is_analyzed_with_report_times(profile, tmp_path):
     assert result["initial_current_a"] == pytest.approx(current)
     assert [entry["nearest_sample_s"] for entry in result["report_times"]] == [2.0, 6.0, 10.0]
     assert [entry["window_samples"] for entry in result["report_times"]] == [5, 5, 3]
-    assert result["in_compliance_samples"] == 0 and result["warnings"] == []
+    assert result["in_compliance_samples"] == 0
+    assert [w for w in result["warnings"] if "ranging" not in w] == []
     assert json.loads((tmp_path / "out" / SUMMARY_NAME).read_text()) == result
     assert (tmp_path / "out" / REPORT_NAME).read_text().splitlines()[0].startswith("requested_s")
     assert result["stabilization"]["source"] == "reference_criterion"

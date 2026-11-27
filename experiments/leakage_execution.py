@@ -10,6 +10,7 @@ import re
 import sys
 import time
 
+from experiments.leakage_ranging import apply_current_range, enable_auto_range
 from experiments.leakage_runner import run_leakage_test
 from experiments.power_execution import open_owned_session
 
@@ -70,6 +71,8 @@ def run_configured_leakage(document, run_name, *, timeout_ms=DEFAULT_TIMEOUT_MS,
                 maximum_current_a=settings["maximum_current_a"],
                 configure_source=configure_charge_source,
                 spot_factory=SpotAcquisition, enable_output=enable_dc_output,
+                set_range=apply_current_range,
+                restore_auto_range=enable_auto_range,
                 run_directory=destination, clock=clock, sleep=sleep,
             )
         finally:

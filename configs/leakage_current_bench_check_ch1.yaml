@@ -73,3 +73,5 @@ leakage:
   report_times_s: [60, 300, 600]
   final_window_s: 120
   maximum_consecutive_read_failures: 2
+  range_control:
+    mode: step_down

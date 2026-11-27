@@ -94,6 +94,14 @@ def _early_stop(value, duration):
         "relative_change": change, "check_interval_s": interval,
         "consecutive_checks": checks,
     }
+def _range_control(value, compliance_a):
+    from experiments.leakage_ranging import RANGE_LADDER, validate_range_control
+    control = validate_range_control(value)
+    if control["mode"] == "step_down" and compliance_a > RANGE_LADDER[-1]:
+        raise ValueError("leakage.range_control step_down supports compliance currents up to 1 A.")
+    return control
+
+
 def _read_failure_limit(value):
     if type(value) is not int or not 0 <= value <= MAXIMUM_READ_FAILURES:
         raise ValueError(
@@ -115,7 +123,7 @@ def _parse(document):
     leakage = _mapping(document["leakage"], "leakage",
         required=("maximum_duration_s", "schedule"),
         optional=("early_stop", "report_times_s", "final_window_s",
-                  "maximum_consecutive_read_failures"))
+                  "maximum_consecutive_read_failures", "range_control"))
     duration = _number(leakage["maximum_duration_s"], "leakage.maximum_duration_s")
     if duration > MAXIMUM_DURATION_S:
         raise ValueError("leakage.maximum_duration_s must not exceed 259200 s (72 h).")
@@ -139,6 +147,8 @@ def _parse(document):
         "final_window_s": window,
         "maximum_consecutive_read_failures": _read_failure_limit(
             leakage.get("maximum_consecutive_read_failures", DEFAULT_READ_FAILURES)),
+        "range_control": _range_control(
+            leakage.get("range_control"), float(validated["resolved_currents"]["charge_current_a"])),
     }
 def _require_budget(total, limit):
     if total > limit:
@@ -187,6 +197,7 @@ def build_leakage_plan(document, *, maximum_records=MAXIMUM_RECORDS):
         "report_times_s": parsed["report_times_s"],
         "final_window_s": parsed["final_window_s"],
         "maximum_consecutive_read_failures": parsed["maximum_consecutive_read_failures"],
+        "range_control": parsed["range_control"],
         "execution_settings": settings,
         **required,
         "limitations": [

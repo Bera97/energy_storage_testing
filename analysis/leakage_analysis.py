@@ -15,6 +15,7 @@ SUMMARY_NAME = "leakage_summary.json"
 REPORT_NAME = "leakage_report_times.csv"
 PLOT_NAME = "leakage_current.png"
 FINAL_STATES = ("completed", "stopped_early")
+LEGACY_COLUMNS = COLUMNS[:-1]
 REFERENCE_CRITERION = {
     "minimum_duration_s": 86400.0, "window_s": 7200.0, "relative_change": 0.01,
     "check_interval_s": 1800.0, "consecutive_checks": 3,
@@ -31,7 +32,7 @@ def _load(source):
         raise ValueError("Unsupported or missing leakage run metadata.")
     with open(source / CSV_NAME, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        if tuple(reader.fieldnames or ()) != COLUMNS:
+        if tuple(reader.fieldnames or ()) not in (COLUMNS, LEGACY_COLUMNS):
             raise ValueError("Leakage CSV columns differ from the recorded format.")
         rows = list(reader)
     try:
@@ -40,6 +41,7 @@ def _load(source):
             "v": [float(row["voltage_v"]) for row in rows],
             "i": [float(row["current_a"]) for row in rows],
             "compliance": [int(row["in_compliance"]) for row in rows],
+            "range": [float(row["range_a"]) if row.get("range_a") else None for row in rows],
         }
     except (TypeError, ValueError) as error:
         raise ValueError(f"Leakage CSV contains an unreadable value: {error}") from error
@@ -150,6 +152,7 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
         raise ValueError("CLI profile differs from the recorded leakage profile.")
     leak = metadata["leakage"]
     t, v, i, compliance = table["t"], table["v"], table["i"], table["compliance"]
+    ranges = table["range"]
     n = len(t)
     state = metadata["state"]
     stored_hash = metadata.get("csv_sha256")
@@ -192,6 +195,8 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
         "read_retry_count": metadata.get("read_retry_count"),
         "maximum_lateness_s": metadata.get("maximum_lateness_s"),
         "plot_written": False,
+        "range_control": metadata.get("range_control"),
+        "range_changes": None,
         "warnings": warnings,
         "limitations": [
             "Offline replay of recorded evidence; it does not qualify the instrument or DUT.",
@@ -205,6 +210,18 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
         window_s = leak["final_window_s"]
         final = _stats(t, i, compliance, max(0.0, t[-1] - window_s), t[-1])
         final["requested_s"] = window_s
+        volts = v[bisect_left(t, max(0.0, t[-1] - window_s)):]
+        final.update(mean_voltage_v=statistics.fmean(volts), minimum_voltage_v=min(volts),
+                     maximum_voltage_v=max(volts))
+        changes = [k for k in range(1, n) if ranges[k] != ranges[k - 1]]
+        in_final = sum(1 for k in changes if t[k] >= t[-1] - window_s)
+        summary["range_changes"] = {"total": len(changes), "in_final_window": in_final}
+        if in_final:
+            warnings.append("The current measurement range changed inside the final window; "
+                            "the headline value mixes ranges.")
+        if (metadata.get("range_control") or {}).get("mode") != "step_down":
+            warnings.append("Automatic current ranging was used; range switches can shift the "
+                            "delivered voltage and with it the current.")
         summary["final_window"] = final
         summary["leakage_current_a"] = final["mean_current_a"]
         if final["in_compliance_samples"]:

@@ -75,3 +75,5 @@ leakage:
     enabled: false
   final_window_s: 1800
   maximum_consecutive_read_failures: 2
+  range_control:
+    mode: step_down
