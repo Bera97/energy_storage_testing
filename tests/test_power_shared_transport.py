@@ -487,14 +487,17 @@ def test_no_factory_or_connection_is_reached(context,monkeypatch):
     assert context[1].connect_count == 1
 
 
-def test_public_dual_cp_execution_still_disabled(context,tmp_path,capsys):
+def test_public_dual_cp_execution_dispatches_to_the_dual_launcher(context,tmp_path,capsys):
     import smu
     import yaml
     paths = []
     for c,doc in enumerate(context[0]):
         p = tmp_path/f"cp_{c}.yaml";p.write_text(yaml.safe_dump(doc));paths.append(str(p))
-    assert smu.main(["--config",paths[0],"--config",paths[1],"--execute"]) == 1
-    assert "planning only" in capsys.readouterr().err.lower()
+    from unittest import mock
+    with mock.patch("experiments.power_dual_execution.run_configured_dual_power_sweep",
+                    return_value=0) as launcher:
+        assert smu.main(["--config",paths[0],"--config",paths[1],"--execute"]) == 0
+    assert launcher.call_count == 1
 
 
 

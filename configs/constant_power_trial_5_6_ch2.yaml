@@ -1,0 +1,78 @@
+# CP bench profile for channel 2 (specimen 5&6); pair with constant_power_trial_7_8_ch1.yaml.
+# Supervised experimental execution; ratings copied from the channel 1 profile, check them.
+schema_version: 1
+experiment:
+  type: constant_power_discharge_sweep
+  name: constant_power_trial_5_6_ch2
+  cycles: 1
+dut:
+  name: 'Tecate LIC parallel assembly: 2 x 40 F'
+  specimen_id: 5&6
+  category: lic
+  chemistry: LIC
+  manufacturer: Tecate Group
+  model: 2 x TPLCE-3R8/40MR8X20 in parallel
+  nominal_capacity_ah: 0.03556
+  nominal_capacitance_f: 80.0
+  ratings:
+    minimum_voltage_v: 2.19
+    maximum_voltage_v: 3.81
+    maximum_continuous_charge_current_a: 0.4
+    maximum_continuous_discharge_current_a: 0.4
+instrument:
+  visa_address: USB0::0x2A8D::0x9201::MY61391173::0::INSTR
+  channel: 2
+  four_wire: true
+  nplc: 1.0
+acquisition:
+  interval_s: 0.2
+  maximum_sample_gap_s: 0.5
+charge:
+  mode: cc_cv
+  current:
+    current_a: 0.4
+    current_fraction: null
+    c_rate: null
+  target_voltage_v: 3.8
+  cv_voltage_tolerance_v: 0.05
+  termination:
+    mode: after_current_threshold
+    current_reference: configured_charge_current
+    current_factor: 0.25
+    hold_time_s: 5
+  maximum_duration_s: 3600
+  maximum_cv_duration_s: 1800
+rest:
+  after_charge_s: 5
+  after_discharge_s: 15
+  mode: zero_current_logging
+  maximum_abs_current_a: 0.001
+discharge:
+  mode: constant_current
+  current:
+    basis: rated_max_discharge_fraction
+    factor: 1
+  cutoff_voltage_v: 3.4
+  maximum_duration_s: 3600
+output:
+  root_directory: runs
+  analysis_directory: analysis_outputs
+  file_name: constant_power_trial_7_8_ch1
+sweep:
+  power_w:
+  - 1.0
+  - 1.2
+  repeats: 1
+  initial_discharge: true
+power_control:
+  maximum_current_a: 0.4
+  update_interval_s: 0.2
+  maximum_feedback_age_s: 0.5
+  relative_tolerance: 0.05
+  absolute_tolerance_w: 0.005
+  startup_grace_s: 1.0
+  maximum_tracking_error_s: 1.0
+execution:
+  expected_serial: MY61391173
+  maximum_voltage_v: 3.81
+  maximum_current_a: 0.4

@@ -383,8 +383,11 @@ def test_public_dual_cp_execution_stays_disabled(documents, tmp_path, capsys):
     for i, document in enumerate(documents):
         path = tmp_path / f"power_{i}.yaml"
         path.write_text(yaml.safe_dump(document));paths.append(str(path))
-    assert smu.main(["--config",paths[0],"--config",paths[1],"--execute"]) == 1
-    assert "planning only" in capsys.readouterr().err.lower()
+    from unittest import mock
+    with mock.patch("experiments.power_dual_execution.run_configured_dual_power_sweep",
+                    return_value=0) as launcher:
+        assert smu.main(["--config",paths[0],"--config",paths[1],"--execute"]) == 0
+    assert launcher.call_count == 1
     assert not (tmp_path / "never_create_runs").exists()
 
 

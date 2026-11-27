@@ -414,7 +414,11 @@ def test_public_cli_still_refuses_physical_cp_dispatch(setup,tmp_path,capsys):
     for c,doc in enumerate(docs):
         path=tmp_path/f"channel{c}.yaml";path.write_text(yaml.safe_dump(doc));paths.extend(["--config",str(path)])
     before=list(wire.commands)
-    assert smu.main([*paths,"--execute"])==1 and "planning only" in capsys.readouterr().err.lower()
+    from unittest import mock
+    with mock.patch("experiments.power_dual_execution.run_configured_dual_power_sweep",
+                    return_value=0) as launcher:
+        assert smu.main([*paths,"--execute"]) == 0
+    assert launcher.call_count == 1
     assert wire.commands==before
 
 

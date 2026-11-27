@@ -165,8 +165,11 @@ def test_dual_preview_and_blocked_dual_execution(profile, tmp_path, capsys):
     result = json.loads(capsys.readouterr().out)
     assert result["experiment_type"] == "dual_constant_power_discharge_sweep"
     assert [p["condition_count"] for p in result["channels"]] == [4, 2]
-    assert smu.main([*args, "--execute"]) == 1
-    assert "planning only" in capsys.readouterr().err.lower()
+    from unittest import mock
+    with mock.patch("experiments.power_dual_execution.run_configured_dual_power_sweep",
+                    return_value=0) as launcher:
+        assert smu.main([*args, "--execute"]) == 0
+    assert launcher.call_count == 1
 
 
 def test_mixed_experiments_rejected(profile, tmp_path, capsys):
