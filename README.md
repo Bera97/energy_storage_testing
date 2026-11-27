@@ -1160,5 +1160,3 @@ python -m smu --config PROFILE.yaml --analyze RUN_NAME
   Preserve failed recordings.
 - Results always carry `physical_qualification: false`. Host feedback control and
   timing are not independently qualified.
-- `cp_bench.py` remains a lower-level supervised runner that also requires
-  `--confirm-specimen`, `--maximum-probe-current-a` and `--run-name`.
