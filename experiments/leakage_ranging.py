@@ -12,9 +12,10 @@ import math
 RANGE_LADDER = (1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0)
 MODES = ("auto", "step_down")
 DEFAULTS = {
-    "mode": "auto", "minimum_range_a": 1e-7, "headroom": 0.5, "confirm_samples": 20,
-    "overflow_lockout_s": 3600.0, "maximum_range_increases": 10,
+    "mode": "auto", "minimum_range_a": 1e-7, "headroom": 0.2, "confirm_samples": 20,
+    "confirm_window_s": 60.0, "overflow_lockout_s": 3600.0, "maximum_range_increases": 10,
 }
+MAXIMUM_CONFIRM_WINDOW_S = 3600.0
 TAKEOVER_HEADROOM = 0.8
 READBACK_RATIO = (0.9, 2.5)
 
@@ -43,13 +44,18 @@ def validate_range_control(value):
     confirm = given.get("confirm_samples", DEFAULTS["confirm_samples"])
     if type(confirm) is not int or not 1 <= confirm <= 100000:
         raise ValueError("leakage.range_control.confirm_samples must be an integer from 1 to 100000.")
+    window = _number(given.get("confirm_window_s", DEFAULTS["confirm_window_s"]),
+                     "leakage.range_control.confirm_window_s", allow_zero=True)
+    if window > MAXIMUM_CONFIRM_WINDOW_S:
+        raise ValueError("leakage.range_control.confirm_window_s must be at most 3600.")
     lockout = _number(given.get("overflow_lockout_s", DEFAULTS["overflow_lockout_s"]),
                       "leakage.range_control.overflow_lockout_s", allow_zero=True)
     increases = given.get("maximum_range_increases", DEFAULTS["maximum_range_increases"])
     if type(increases) is not int or not 0 <= increases <= 1000:
         raise ValueError("leakage.range_control.maximum_range_increases must be an integer from 0 to 1000.")
     return {"mode": mode, "minimum_range_a": minimum, "headroom": headroom,
-            "confirm_samples": confirm, "overflow_lockout_s": lockout,
+            "confirm_samples": confirm, "confirm_window_s": window,
+            "overflow_lockout_s": lockout,
             "maximum_range_increases": increases}
 
 
@@ -61,7 +67,7 @@ class StepDownRanger:
         self.control = control
         self.ladder = tuple(rung for rung in RANGE_LADDER if rung >= floor)
         self.range_a = None
-        self.recent = deque(maxlen=control["confirm_samples"])
+        self.recent = deque()  # (offset_s, absolute current)
         self.floor_a = None
         self.floor_until_s = -math.inf
         self.increases = 0
@@ -75,10 +81,16 @@ class StepDownRanger:
 
     def observe(self, current_a, offset_s):
         """Record a good reading; return a lower range to step down to, or None."""
-        self.recent.append(abs(current_a))
-        if len(self.recent) < self.recent.maxlen:
+        self.recent.append((offset_s, abs(current_a)))
+        window = self.control.get("confirm_window_s", 0.0)
+        keep = self.control["confirm_samples"]
+        while len(self.recent) > keep and (window <= 0 or self.recent[1][0] <= offset_s - window):
+            self.recent.popleft()
+        if len(self.recent) < keep:
             return None
-        peak = max(self.recent)
+        if window > 0 and offset_s - self.recent[0][0] < window * (1 - 1e-9):
+            return None
+        peak = max(value for _, value in self.recent)
         locked = offset_s < self.floor_until_s
         for rung in self.ladder:
             if rung >= self.range_a * (1 - 1e-9):

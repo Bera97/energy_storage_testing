@@ -29,7 +29,8 @@ def ranging_doc(base, **control):
         "maximum_duration_s": 400, "final_window_s": 20,
         "schedule": [{"until_s": 400, "interval_s": 1}],
         "range_control": {"mode": "step_down", "minimum_range_a": 1e-4,
-                          "confirm_samples": 5, **control},
+                          "confirm_samples": 5, "headroom": 0.5, "confirm_window_s": 0,
+                          **control},
     }
     return doc
 
@@ -211,7 +212,8 @@ def test_range_stays_at_the_start_range_while_the_source_stays_in_compliance(pro
 
 
 def controller(**control):
-    return StepDownRanger(validate_range_control({"mode": "step_down", "confirm_samples": 3, **control}))
+    return StepDownRanger(validate_range_control({"mode": "step_down", "confirm_samples": 3,
+                                                  "headroom": 0.5, "confirm_window_s": 0, **control}))
 
 
 def test_takeover_picks_the_smallest_rung_with_headroom():
@@ -305,6 +307,7 @@ def test_step_down_profile_is_accepted(profile):
     {"headroom": True}, {"confirm_samples": 0}, {"confirm_samples": True},
     {"confirm_samples": 1.5}, {"overflow_lockout_s": -1}, {"maximum_range_increases": -1},
     {"maximum_range_increases": True}, {"unknown": 1},
+    {"confirm_window_s": -1}, {"confirm_window_s": 3601}, {"confirm_window_s": True},
 ])
 def test_invalid_range_control_is_rejected(profile, control):
     with pytest.raises(ValueError):
@@ -378,3 +381,25 @@ def test_analysis_flags_automatic_ranging_and_accepts_legacy_csv(profile, tmp_pa
     result = analyze_leakage_run(run, tmp_path / "out")
     assert result["valid"] and result["range_changes"] == {"total": 0, "in_final_window": 0}
     assert any("Automatic current ranging" in warning for warning in result["warnings"])
+
+
+def test_default_range_control_waits_one_minute_with_wide_headroom():
+    assert DEFAULTS["confirm_window_s"] == 60.0 and DEFAULTS["headroom"] == 0.2
+def test_step_down_waits_for_the_whole_time_window():
+    ranger = controller(confirm_window_s=60)
+    ranger.takeover(0.395)
+    assert [ranger.observe(1e-3, t) for t in (0, 15, 30, 45)] == [None] * 4
+    assert ranger.observe(1e-3, 60) == 0.01
+def test_a_peak_inside_the_time_window_blocks_the_step_down_until_it_leaves():
+    ranger = controller(confirm_window_s=60)
+    ranger.takeover(0.395)
+    results = {t: ranger.observe(0.3 if t == 10 else 1e-3, t) for t in range(0, 90, 10)}
+    assert all(results[t] is None for t in range(0, 80, 10))
+    assert results[80] == 0.01
+def test_a_wandering_current_never_steps_below_the_range_it_can_overflow():
+    ranger = StepDownRanger(validate_range_control({"mode": "step_down"}))
+    ranger.takeover(0.395)
+    steps = [ranger.observe(1e-3 * abs(math.sin(0.9 * k)), 0.25 * k) for k in range(3600)]
+    assert [step for step in steps if step] == [0.01]
+    quiet = [ranger.observe(1e-5, 0.25 * k) for k in range(3600, 4400)]
+    assert ranger.range_a == 1e-4 and all(step < 0.01 for step in quiet if step)

@@ -64,7 +64,10 @@ measurements. Use step-down-only ranging:
 Before the output is enabled the program fixes the lowest range that covers the compliance current
 (1 A for 0.4 A compliance), so the very first reading cannot overflow and the instrument never
 chooses a range during the run. The program then steps down one decade at a time, only after
-`confirm_samples` consecutive readings (the peak of them) stay below `headroom` x the lower range.
+the highest absolute current seen over the last `confirm_window_s` seconds (and over at least
+`confirm_samples` readings) stays below `headroom` x the lower range. The window matters because
+the current of a real cell wanders by several tenths of a milliampere within seconds; a short
+window can step down to a range that the next current peak overflows.
 It steps up only after a measured overflow and then refuses to step down for `overflow_lockout_s`.
 More than `maximum_range_increases` overflows stop the run, and an overflow at the start range
 (the highest range) stops it at once. Every change is listed in `leakage_metadata.json` under
@@ -84,5 +87,6 @@ outputs are verified OFF) and records `auto_range_restored` in the run metadata,
 experiments do not inherit a fixed low range. If the run is killed before it can do that, the next
 leakage run still starts from a known range, and a power cycle also restores automatic ranging.
 
-Options (all optional): `minimum_range_a` (default 1e-7), `headroom` (0.5), `confirm_samples` (20),
-`overflow_lockout_s` (3600), `maximum_range_increases` (10).
+Options (all optional): `minimum_range_a` (default 1e-7), `headroom` (0.2), `confirm_samples` (20),
+`confirm_window_s` (60; 0 uses only `confirm_samples`), `overflow_lockout_s` (3600),
+`maximum_range_increases` (10). Set `minimum_range_a: 0.01` to never leave the 10 mA range.
