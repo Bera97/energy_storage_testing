@@ -15,7 +15,7 @@ SUMMARY_NAME = "leakage_summary.json"
 REPORT_NAME = "leakage_report_times.csv"
 PLOT_NAME = "leakage_current.png"
 FINAL_STATES = ("completed", "stopped_early")
-LEGACY_COLUMNS = COLUMNS[:-1]
+ACCEPTED_COLUMNS = (COLUMNS, COLUMNS[:-1], COLUMNS[:-2])
 REFERENCE_CRITERION = {
     "minimum_duration_s": 86400.0, "window_s": 7200.0, "relative_change": 0.01,
     "check_interval_s": 1800.0, "consecutive_checks": 3,
@@ -32,7 +32,7 @@ def _load(source):
         raise ValueError("Unsupported or missing leakage run metadata.")
     with open(source / CSV_NAME, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        if tuple(reader.fieldnames or ()) not in (COLUMNS, LEGACY_COLUMNS):
+        if tuple(reader.fieldnames or ()) not in ACCEPTED_COLUMNS:
             raise ValueError("Leakage CSV columns differ from the recorded format.")
         rows = list(reader)
     try:
@@ -42,6 +42,8 @@ def _load(source):
             "i": [float(row["current_a"]) for row in rows],
             "compliance": [int(row["in_compliance"]) for row in rows],
             "range": [float(row["range_a"]) if row.get("range_a") else None for row in rows],
+            "flag": [int(row["after_range_change"]) if row.get("after_range_change") else 0
+                     for row in rows],
         }
     except (TypeError, ValueError) as error:
         raise ValueError(f"Leakage CSV contains an unreadable value: {error}") from error
@@ -71,12 +73,12 @@ def _stats(times, values, compliance, start, end):
     }
 
 
-def _report(times, currents, compliance, targets, window_s):
+def _report(times, currents, compliance, targets, window_s, last_s):
     entries = []
     for target in targets:
         entry = dict.fromkeys(REPORT_COLUMNS)
         entry["requested_s"] = target
-        entry["reached"] = target <= times[-1] + 1e-9
+        entry["reached"] = target <= last_s + 1e-9
         if entry["reached"]:
             k = bisect_left(times, target)
             nearest = min((j for j in (k - 1, k) if 0 <= j < len(times)),
@@ -153,6 +155,9 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
     leak = metadata["leakage"]
     t, v, i, compliance = table["t"], table["v"], table["i"], table["compliance"]
     ranges = table["range"]
+    flags = table["flag"]
+    keep = [k for k in range(len(t)) if not flags[k]]
+    tk, vk, ik, ck = ([column[k] for k in keep] for column in (t, v, i, compliance))
     n = len(t)
     state = metadata["state"]
     stored_hash = metadata.get("csv_sha256")
@@ -197,20 +202,22 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
         "plot_written": False,
         "range_control": metadata.get("range_control"),
         "range_changes": None,
+        "range_change_samples_excluded": sum(flags),
         "warnings": warnings,
         "limitations": [
             "Offline replay of recorded evidence; it does not qualify the instrument or DUT.",
             "Early charge-up samples are current-limited; interpret late-time current only.",
             "Timestamps are host-scheduled offsets; instrument time is stored in the CSV.",
+            "Samples read right after a range change are left out of window means and the stabilization replay.",
         ],
     }
     if n:
         flagged = [t[k] for k in range(n) if compliance[k]]
         summary["last_in_compliance_s"] = flagged[-1] if flagged else None
         window_s = leak["final_window_s"]
-        final = _stats(t, i, compliance, max(0.0, t[-1] - window_s), t[-1])
+        final = _stats(tk, ik, ck, max(0.0, t[-1] - window_s), t[-1])
         final["requested_s"] = window_s
-        volts = v[bisect_left(t, max(0.0, t[-1] - window_s)):]
+        volts = vk[bisect_left(tk, max(0.0, t[-1] - window_s)):]
         final.update(mean_voltage_v=statistics.fmean(volts), minimum_voltage_v=min(volts),
                      maximum_voltage_v=max(volts))
         changes = [k for k in range(1, n) if ranges[k] != ranges[k - 1]]
@@ -229,7 +236,7 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
                 "The final window contains current-limited (compliance) samples; "
                 "the headline leakage current is not a clean hold value."
             )
-        summary["report_times"] = _report(t, i, compliance, leak["report_times_s"], window_s)
+        summary["report_times"] = _report(tk, ik, ck, leak["report_times_s"], window_s, t[-1])
         early = leak["early_stop"]
         if early.get("enabled"):
             criterion = {key: early[key] for key in REFERENCE_CRITERION}
@@ -237,7 +244,7 @@ def analyze_leakage_run(source, destination, *, expected_document=None):
         else:
             criterion, source_name = dict(REFERENCE_CRITERION), "reference_criterion"
         summary["stabilization"] = {"source": source_name, "criterion": criterion,
-                                    **find_stabilization(t, i, criterion)}
+                                    **find_stabilization(tk, ik, criterion)}
 
     destination.mkdir(parents=True, exist_ok=True)
     with open(destination / REPORT_NAME, "w", newline="", encoding="utf-8") as handle:

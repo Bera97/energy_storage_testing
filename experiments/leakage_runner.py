@@ -27,7 +27,7 @@ METADATA_NAME = "leakage_metadata.json"
 COLUMNS = (
     "sample_index", "scheduled_s", "host_start_s", "host_end_s", "lateness_s",
     "instrument_time_s", "voltage_v", "current_a", "status", "in_compliance",
-    "read_failures", "range_a",
+    "read_failures", "range_a", "after_range_change",
 )
 RETRY_DELAY_S = 0.5
 FSYNC_INTERVAL_S = 30.0
@@ -187,9 +187,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
     start = None
     error = None
     outcome = "completed"
-
-    def manual_range():
-        return ranger is not None and ranger.range_a is not None
+    range_changed = False
 
     def log_range(action, index, offset, previous, new, readback, current):
         events = meta["range_control"]["events"]
@@ -200,30 +198,23 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
         meta["range_control"]["current_range_a"] = new
 
     def step_up(index, offset):
+        nonlocal range_changed
         previous = ranger.range_a
         new = ranger.overflow(offset)
         readback = set_range(smu, channel, new)
         meta["range_control"]["increase_count"] = ranger.increases
         log_range("step_up", index, offset, previous, new, readback, None)
-
-    def manual_start(index, offset):
-        new = ranger.takeover(leak["compliance_current_a"])
-        readback = set_range(smu, channel, new)
-        log_range("start_overflow", index, offset, None, new, readback, None)
+        range_changed = True
 
     def update_range(reading, index, offset):
-        if ranger.range_a is None:
-            if reading.in_compliance:
-                return
-            previous, action = None, "takeover"
-            new = ranger.takeover(reading.current_a)
-        else:
-            previous, action = ranger.range_a, "step_down"
-            new = ranger.observe(reading.current_a, offset)
-            if new is None:
-                return
+        nonlocal range_changed
+        previous = ranger.range_a
+        new = ranger.observe(reading.current_a, offset)
+        if new is None:
+            return
         readback = set_range(smu, channel, new)
-        log_range(action, index, offset, previous, new, readback, reading.current_a)
+        log_range("step_down", index, offset, previous, new, readback, reading.current_a)
+        range_changed = True
 
     def read_sample(spot, index, offset):
         failures = 0
@@ -233,16 +224,10 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             except MeasurementStatusError as caught:
                 if not (ranger is not None and _overflow_only(caught.reading)):
                     raise
-                if manual_range():
-                    step_up(index, offset)
-                else:
-                    manual_start(index, offset)
+                step_up(index, offset)
             except Exception as caught:
                 if ranger is not None and "Invalid current field" in str(caught):
-                    if manual_range():
-                        step_up(index, offset)
-                    else:
-                        manual_start(index, offset)
+                    step_up(index, offset)
                     continue
                 failures += 1
                 meta["read_retry_count"] += 1
@@ -267,6 +252,7 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             raise LeakageRunError(f"Sample {index}: {reading.current_a:.6g} A exceeds the compliance margin.")
 
     def hold(spot):
+        nonlocal range_changed
         times, currents = [], []
         checks_ok = 0
         next_check = early["minimum_duration_s"] if early["enabled"] else None
@@ -285,15 +271,18 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
             reading, failures = read_sample(spot, index, offset)
             finish = clock()
             check(reading, index)
+            flagged = range_changed
+            range_changed = False
             writer.writerow([
                 index, offset, begin - start, finish - start, lateness,
                 reading.timestamp_s, reading.voltage_v, reading.current_a,
                 reading.status, int(reading.in_compliance), failures,
-                ranger.range_a if ranger is not None else None,
+                ranger.range_a if ranger is not None else None, int(flagged),
             ])
             handle.flush()
-            times.append(offset)
-            currents.append(reading.current_a)
+            if not flagged:
+                times.append(offset)
+                currents.append(reading.current_a)
             meta["recorded_sample_count"] = index + 1
             meta["maximum_lateness_s"] = max(meta["maximum_lateness_s"], lateness)
             if ranger is not None:
@@ -328,6 +317,10 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
         meta["source"] = configure_source(smu, base)
         spot = spot_factory(smu, channel)
         spot.configure(base["instrument"]["nplc"])
+        if ranger is not None:
+            new = ranger.takeover(leak["compliance_current_a"])
+            readback = set_range(smu, channel, new)
+            log_range("start", None, None, None, new, readback, None)
         enable_output(smu, channel, max_voltage_v=maximum_voltage_v,
                       max_current_a=maximum_current_a)
         start = clock()

@@ -1,12 +1,17 @@
-"""Range handling at the start and end of a step-down hold."""
+"""Start range, restore of automatic ranging, and range-change flags for the leakage hold."""
+import csv
 from datetime import datetime, timezone
+import json
 import pytest
 
 import test_charge_current_sweep
 from acquisition.spot_acquisition import MeasurementStatusError
+from analysis.leakage_analysis import analyze_leakage_run
 from experiments import leakage_execution
 from experiments.leakage_ranging import RangingError, enable_auto_range
-from experiments.leakage_runner import LeakageRunError, run_leakage_test
+from experiments.leakage_runner import (
+    CSV_NAME, METADATA_NAME, LeakageRunError, run_leakage_test,
+)
 from experiments.settings import settings_for
 from test_leakage_planning import leakage_profile
 from test_leakage_ranging import (
@@ -42,31 +47,43 @@ def run_with(rig, run, set_range, restore):
     )
 
 
+def rewrite(run, edit):
+    path = run / CSV_NAME
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle).writerows(edit(rows))
+    meta = metadata_of(run)
+    meta["csv_sha256"] = None
+    (run / METADATA_NAME).write_text(json.dumps(meta), encoding="utf-8")
+
+
 def always_overflow(rig):
     raise RuntimeError(OVERFLOW)
 
 
-@pytest.mark.parametrize("kind", ["invalid_field", "status_flag"])
-def test_overflow_on_the_first_reading_takes_manual_control_at_the_compliance_range(profile, tmp_path, kind):
+def test_start_range_covers_the_compliance_current_and_is_set_with_the_output_off(profile, tmp_path):
+    recorder = Recorder()
+    rig, holder = make_rig(profile)
+    result = run_with(rig, tmp_path / "run", recorder, None)
+    first = result["range_control"]["events"][0]
+    assert first["action"] == "start" and first["sample_index"] is None
+    assert first["to_range_a"] == first["readback_a"] == recorder.calls[0] == 1.0
+    assert recorder.outputs_on[0] is False
+
+
+def test_overflow_at_the_start_range_stops_the_run_and_shuts_down(profile, tmp_path):
     recorder = Recorder()
 
     def behavior(rig, holder):
-        if recorder.range is None:
-            if kind == "invalid_field":
-                raise RuntimeError(OVERFLOW)
-            raise MeasurementStatusError(reading(rig.hold, 0.0, 1 << 13))
-        return decaying(rig)
+        raise RuntimeError(OVERFLOW)
 
     rig, holder = make_rig(profile, behavior)
     run = tmp_path / "run"
-    result = run_with(rig, run, recorder, None)
-    events = result["range_control"]["events"]
-    assert recorder.calls[0] == 1.0 and events[0]["action"] == "start_overflow"
-    assert {event["action"] for event in events[1:]} == {"step_down"}
-    assert result["state"] == "completed" and result["read_retry_count"] == 0
-    rows = rows_of(run)
-    assert len(rows) == 401 and float(rows[0]["range_a"]) == 1.0
-    assert all(row["read_failures"] == "0" for row in rows)
+    with pytest.raises(RangingError, match="highest"):
+        run_with(rig, run, recorder, Restore())
+    assert recorder.calls == holder["expected"][:1]
+    assert metadata_of(run)["state"] == "failed" and rig.events[-1] == "shutdown"
 
 
 def test_auto_mode_still_stops_after_repeated_overflow_at_the_first_sample(profile, tmp_path):
@@ -105,12 +122,17 @@ def test_auto_ranging_is_restored_after_a_failed_run(profile, tmp_path):
     assert metadata_of(run)["range_control"]["auto_range_restored"] is True
 
 
-def test_restore_is_not_attempted_when_no_range_was_fixed(profile, tmp_path):
+def test_restore_is_not_attempted_in_auto_mode(profile, tmp_path):
     restore = Restore()
     run_with(Rig(small_doc(profile)), tmp_path / "auto", Recorder(), restore)
+    assert restore.calls == []
+
+
+def test_restore_is_attempted_even_when_the_source_never_leaves_compliance(profile, tmp_path):
+    restore = Restore()
     rig, holder = make_rig(profile, lambda r, h: reading(r.hold, r.compliance, status=2))
     run_with(rig, tmp_path / "compliance", Recorder(), restore)
-    assert restore.calls == []
+    assert restore.calls == [1]
 
 
 def test_restore_failure_is_recorded_but_does_not_fail_the_run(profile, tmp_path):
@@ -169,3 +191,81 @@ def test_execution_passes_the_restore_hook(profile, tmp_path, monkeypatch):
     monkeypatch.setattr(leakage_execution, "run_leakage_test", runner)
     assert leakage_execution.run_configured_leakage(doc, "20261127_090000_leak") == 0
     assert seen["restore_auto_range"] is enable_auto_range
+
+
+def test_the_sample_after_each_range_change_is_flagged(profile, tmp_path):
+    rig, holder = make_rig(profile)
+    run = tmp_path / "run"
+    result = run_with(rig, run, Recorder(), None)
+    events = result["range_control"]["events"][1:]
+    rows = rows_of(run)
+    flagged = [int(row["sample_index"]) for row in rows if row["after_range_change"] == "1"]
+    assert flagged == [event["sample_index"] + 1 for event in events]
+    assert len(flagged) == len(holder["expected"]) - 1 and rows[0]["after_range_change"] == "0"
+
+
+@pytest.mark.parametrize("kind", ["invalid_field", "status_flag"])
+def test_an_overflow_step_up_flags_the_retried_sample(profile, tmp_path, kind):
+    recorder, state = Recorder(), {"spiked": False}
+
+    def behavior(rig, holder):
+        if recorder.range == holder["expected"][1] and not state["spiked"]:
+            state["spiked"] = True
+            if kind == "invalid_field":
+                raise RuntimeError(OVERFLOW)
+            raise MeasurementStatusError(reading(rig.hold, 0.0, 1 << 13))
+        return decaying(rig)
+
+    rig, holder = make_rig(profile, behavior)
+    run = tmp_path / "run"
+    result = run_with(rig, run, recorder, None)
+    events = result["range_control"]["events"]
+    assert [event["action"] for event in events] == ["start", "step_down", "step_up"]
+    flagged = [int(row["sample_index"]) for row in rows_of(run) if row["after_range_change"] == "1"]
+    assert flagged == [events[2]["sample_index"]]
+    assert events[2]["sample_index"] == events[1]["sample_index"] + 1
+
+
+def test_auto_mode_flags_nothing(profile, tmp_path):
+    rig = Rig(small_doc(profile))
+    run = tmp_path / "run"
+    rig.run(run)
+    assert {row["after_range_change"] for row in rows_of(run)} == {"0"}
+
+
+def test_flagged_samples_are_left_out_of_the_window_means(profile, tmp_path):
+    rig, holder = make_rig(profile)
+    run = tmp_path / "run"
+    run_with(rig, run, Recorder(), None)
+    window = analyze_leakage_run(run, tmp_path / "clean")["final_window"]
+
+    def spike(flag):
+        def edit(rows):
+            header, body = rows[0], rows[1:]
+            column = {name: k for k, name in enumerate(header)}
+            body[-3][column["current_a"]] = "1.0"
+            body[-3][column["after_range_change"]] = flag
+            return [header, *body]
+        return edit
+
+    rewrite(run, spike("1"))
+    excluded = analyze_leakage_run(run, tmp_path / "excluded")
+    rewrite(run, spike("0"))
+    included = analyze_leakage_run(run, tmp_path / "included")
+    assert excluded["final_window"]["samples"] == window["samples"] - 1
+    assert excluded["leakage_current_a"] == pytest.approx(window["mean_current_a"], abs=1e-6)
+    assert excluded["range_change_samples_excluded"] == len(holder["expected"])
+    assert included["final_window"]["samples"] == window["samples"]
+    assert included["leakage_current_a"] > 0.04
+
+
+def test_older_csv_formats_are_still_analyzed(profile, tmp_path):
+    rig, holder = make_rig(profile)
+    run = tmp_path / "run"
+    run_with(rig, run, Recorder(), None)
+    rewrite(run, lambda rows: [row[:-1] for row in rows])
+    twelve = analyze_leakage_run(run, tmp_path / "twelve")
+    rewrite(run, lambda rows: [row[:-1] for row in rows])
+    eleven = analyze_leakage_run(run, tmp_path / "eleven")
+    assert twelve["valid"] and twelve["range_change_samples_excluded"] == 0
+    assert eleven["valid"] and eleven["range_changes"] == {"total": 0, "in_final_window": 0}

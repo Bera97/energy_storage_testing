@@ -37,10 +37,12 @@ def ranging_doc(base, **control):
 class Recorder:
     def __init__(self):
         self.calls = []
+        self.outputs_on = []
         self.range = None
 
     def __call__(self, smu, channel, range_a):
         self.calls.append(range_a)
+        self.outputs_on.append(smu.output_on)
         self.range = range_a
         return range_a
 
@@ -89,19 +91,20 @@ def metadata_of(run):
     return json.loads((run / METADATA_NAME).read_text(encoding="utf-8"))
 
 
-def test_takeover_waits_for_compliance_to_end_then_steps_down_one_rung_at_a_time(profile, tmp_path):
+def test_range_is_fixed_before_the_output_is_enabled_then_steps_down_one_rung_at_a_time(profile, tmp_path):
     recorder = Recorder()
     rig, holder = make_rig(profile)
     run = tmp_path / "run"
     result = run_ranging(rig, run, recorder)
     expected = holder["expected"]
     assert recorder.calls == expected and len(expected) >= 2
+    assert recorder.outputs_on[0] is False and all(recorder.outputs_on[1:])
     rows = rows_of(run)
-    assert [row["range_a"] for row in rows[:4]] == ["", "", "", ""]
-    assert float(rows[4]["range_a"]) == expected[0]
+    assert float(rows[0]["range_a"]) == expected[0]
     assert float(rows[-1]["range_a"]) == expected[-1]
-    actions = [event["action"] for event in result["range_control"]["events"]]
-    assert actions == ["takeover"] + ["step_down"] * (len(expected) - 1)
+    events = result["range_control"]["events"]
+    assert [event["action"] for event in events] == ["start"] + ["step_down"] * (len(expected) - 1)
+    assert events[0]["sample_index"] is None
     assert result["range_control"]["current_range_a"] == expected[-1]
     assert result["state"] == "completed" and len(rows) == 401
 
@@ -124,7 +127,7 @@ def test_overflow_steps_up_once_then_locks_out_step_downs(profile, tmp_path, kin
     expected = holder["expected"]
     assert recorder.calls == [expected[0], expected[1], expected[0]]
     actions = [event["action"] for event in result["range_control"]["events"]]
-    assert actions == ["takeover", "step_down", "step_up"]
+    assert actions == ["start", "step_down", "step_up"]
     assert result["range_control"]["increase_count"] == 1
     assert result["read_retry_count"] == 0 and len(rows_of(run)) == 401
     assert all(row["read_failures"] == "0" for row in rows_of(run))
@@ -181,6 +184,7 @@ def test_range_setter_failure_stops_and_shuts_down(profile, tmp_path):
     with pytest.raises(RangingError, match="boom"):
         run_ranging(rig, tmp_path / "run", failing)
     assert rig.events[-1] == "shutdown" and not rig.smu.output_on
+    assert not any(isinstance(event, tuple) for event in rig.events)
 
 
 def test_auto_mode_never_changes_the_range(profile, tmp_path):
@@ -199,11 +203,11 @@ def test_missing_range_setter_is_refused_before_anything_happens(profile, tmp_pa
     assert rig.events == [] and not (tmp_path / "run").exists()
 
 
-def test_no_takeover_while_the_source_stays_in_compliance(profile, tmp_path):
+def test_range_stays_at_the_start_range_while_the_source_stays_in_compliance(profile, tmp_path):
     recorder = Recorder()
     rig, holder = make_rig(profile, lambda r, h: reading(r.hold, r.compliance, status=2))
     result = run_ranging(rig, tmp_path / "run", recorder)
-    assert recorder.calls == [] and result["state"] == "completed"
+    assert recorder.calls == holder["expected"][:1] and result["state"] == "completed"
 
 
 def controller(**control):
@@ -351,8 +355,9 @@ def test_analysis_counts_range_changes_and_reports_final_window_voltage(profile,
     run = tmp_path / "run"
     run_ranging(rig, run, recorder)
     result = analyze_leakage_run(run, tmp_path / "out")
-    assert result["valid"] and result["range_changes"] == {
-        "total": len(holder["expected"]), "in_final_window": 0}
+    changes = len(holder["expected"]) - 1
+    assert result["valid"] and result["range_changes"] == {"total": changes, "in_final_window": 0}
+    assert result["range_change_samples_excluded"] == changes
     assert result["warnings"] == []
     window = result["final_window"]
     assert window["mean_voltage_v"] == pytest.approx(rig.hold)
@@ -364,7 +369,7 @@ def test_analysis_flags_automatic_ranging_and_accepts_legacy_csv(profile, tmp_pa
     run = tmp_path / "run"
     rig.run(run)
     with (run / CSV_NAME).open(newline="", encoding="utf-8") as handle:
-        rows = [row[:-1] for row in csv.reader(handle)]
+        rows = [row[:-2] for row in csv.reader(handle)]
     with (run / CSV_NAME).open("w", newline="", encoding="utf-8") as handle:
         csv.writer(handle).writerows(rows)
     meta = metadata_of(run)
