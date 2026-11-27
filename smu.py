@@ -161,6 +161,58 @@ def _unified_leakage_analyze(document, run_name):
     return 0 if result["valid"] else 1
 
 
+def _unified_dual_leakage_analyze(documents, run_name):
+    """Offline analysis of a two-channel leakage run; never opens an instrument."""
+    if (not isinstance(run_name, str) or not run_name or run_name in (".", "..")
+            or "/" in run_name or chr(92) in run_name):
+        raise ValueError("RUN_NAME must be a single recorded run-folder name.")
+    ordered = sorted(documents, key=lambda doc: doc["instrument"]["channel"])
+    if any("analysis_directory" not in doc["output"] for doc in ordered):
+        raise ValueError("Set output.analysis_directory in both leakage profiles to use --analyze.")
+    source = Path(ordered[0]["output"]["root_directory"]) / run_name
+    destination = Path(ordered[0]["output"]["analysis_directory"]) / run_name
+    if not source.is_dir():
+        raise ValueError(
+            f"No recorded dual leakage run named {run_name!r} inside {source.parent.resolve()}.")
+    analyze = import_module("analysis.leakage_analysis").analyze_leakage_run
+    results = {}
+    try:
+        for doc in ordered:
+            channel = doc["instrument"]["channel"]
+            results[f"channel_{channel}"] = analyze(
+                source / f"channel_{channel}", destination / f"channel_{channel}",
+                expected_document=doc)
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"Leakage analysis failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(results, indent=2, allow_nan=False))
+    return 0 if all(result["valid"] for result in results.values()) else 1
+def _unified_dual_leakage(parsed, documents):
+    """Preview, execute and analyze two leakage profiles (channel 1 and channel 2)."""
+    ordered, _ = import_module("experiments.leakage_dual_runner").validate_dual_documents(documents)
+    planner = import_module("experiments.leakage_planning")
+    if parsed.execute:
+        if parsed.analyze is not None and any(
+                "analysis_directory" not in doc["output"] for doc in ordered):
+            raise ValueError("Set output.analysis_directory in both leakage profiles to use --analyze.")
+        for document in ordered:
+            planner.build_leakage_plan(document)
+        run_name = _unified_run_name(documents[0])
+        status = import_module(
+            "experiments.leakage_dual_execution").run_configured_dual_leakage(ordered, run_name)
+        if status != 0:
+            if parsed.analyze is not None:
+                print("Run did not complete; analysis skipped.", file=sys.stderr)
+            return status
+        if parsed.analyze is not None:
+            return _unified_dual_leakage_analyze(ordered, run_name)
+        return 0
+    if parsed.analyze is not None:
+        return _unified_dual_leakage_analyze(documents, parsed.analyze)
+    plans = [planner.build_leakage_plan(document) for document in ordered]
+    print(json.dumps({"dual_leakage_preview_schema_version": 1, "will_connect": False,
+                      "will_enable_output": False, "channels": plans}, indent=2, allow_nan=False))
+    return 0
 def _unified_main(arguments):
     parser = argparse.ArgumentParser(
         prog="python -m smu",
@@ -233,11 +285,10 @@ def _unified_main(arguments):
     try:
         _unified_config_paths(documents, paths)
         if any(doc["experiment"]["type"] == "leakage_current_test" for doc in documents):
-            if len(documents) != 1 or documents[0]["experiment"]["type"] != "leakage_current_test":
-                raise ValueError(
-                    "Use exactly one leakage-current profile; dual-channel and mixed "
-                    "leakage runs are not supported."
-                )
+            if not all(doc["experiment"]["type"] == "leakage_current_test" for doc in documents):
+                raise ValueError("Do not mix leakage-current profiles with other experiment types.")
+            if len(documents) == 2:
+                return _unified_dual_leakage(parsed, documents)
             if parsed.execute:
                 if parsed.analyze is not None and "analysis_directory" not in documents[0]["output"]:
                     raise ValueError(

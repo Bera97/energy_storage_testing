@@ -113,14 +113,16 @@ def test_public_preview_is_read_only(profile, tmp_path, capsys):
     assert result["schedule"]["total_sample_count"] == 97741
     assert result["execution_available"] and not result["will_connect"]
     assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
-def test_dual_leakage_is_rejected(profile, tmp_path, capsys):
+def test_dual_leakage_preview_lists_both_channels(profile, tmp_path, capsys):
     first = leakage_profile(profile)
     second = deepcopy(first)
     second["instrument"]["channel"] = 2
     second["dut"]["specimen_id"] = "different_specimen"
     args = ["--config", save(first, tmp_path / "a.yaml"), "--config", save(second, tmp_path / "b.yaml"), "--preview"]
-    assert smu.main(args) == 1
-    assert "exactly one" in capsys.readouterr().err.lower()
+    assert smu.main(args) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [item["channel"] for item in out["channels"]] == [1, 2]
+    assert out["will_connect"] is False
 def test_example_profile_matches_requested_schedule():
     root = Path(__file__).resolve().parents[1]
     doc = load_config(root / "configs/leakage_current_trial_7_8_ch1.yaml")["config"]
