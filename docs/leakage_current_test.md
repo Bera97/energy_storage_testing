@@ -12,7 +12,7 @@ schema and are ignored. Hardware execution is supervised and experimental
     python -m smu --config configs\leakage_current_trial_7_8_ch1.yaml --execute --analyze
     python -m smu --config configs\leakage_current_trial_7_8_ch1.yaml --analyze RUN_NAME
 
-Run the short `configs\leakage_current_bench_check_ch1.yaml` first (10 minutes, 661 samples).
+Run the short `configs\leakage_current_bench_check_ch1.yaml` first (10 minutes, 1201 samples).
 Keep the PC awake, on mains power and with automatic updates paused during a 72 h run.
 Ctrl+C stops the run; outputs are shut down on every exit.
 
@@ -20,8 +20,9 @@ Ctrl+C stops the run; outputs are shut down on every exit.
 
 - `maximum_duration_s`: at most 259200 (72 h); the last schedule segment must end there.
 - `schedule`: segments `{until_s, interval_s}`. Samples are taken at fixed offsets from the
-  start of the hold, plus one at t = 0. Total samples must not exceed 100000.
-  The example schedule has 97741 samples.
+  start of the hold, plus one at t = 0. Total samples must not exceed 1000000 (readings go live to the CSV, not into the
+  instrument buffer). All profiles read at 2 Hz; the 72 h example has 518401 samples
+  (roughly 45 MB of CSV).
 - `early_stop`: off by default. When enabled the run stops after `consecutive_checks` checks,
   `check_interval_s` apart and not before `minimum_duration_s`, in which the mean current of
   the last `window_s` differs from the previous `window_s` by less than `relative_change`.
@@ -63,7 +64,9 @@ measurements. Use step-down-only ranging:
 
 Before the output is enabled the program fixes the lowest range that covers the compliance current
 (1 A for 0.4 A compliance), so the very first reading cannot overflow and the instrument never
-chooses a range during the run. The program then steps down one decade at a time, only after
+chooses a range during the run. The first reading then moves the range straight to the lowest
+range that fits it with the `headroom` margin, without waiting. After that the program steps
+down, only after
 the highest absolute current seen over the last `confirm_window_s` seconds (and over at least
 `confirm_samples` readings) stays below `headroom` x the lower range. The window matters because
 the current of a real cell wanders by several tenths of a milliampere within seconds; a short
@@ -88,5 +91,5 @@ experiments do not inherit a fixed low range. If the run is killed before it can
 leakage run still starts from a known range, and a power cycle also restores automatic ranging.
 
 Options (all optional): `minimum_range_a` (default 1e-7), `headroom` (0.2), `confirm_samples` (20),
-`confirm_window_s` (60; 0 uses only `confirm_samples`), `overflow_lockout_s` (3600),
+`confirm_window_s` (30; 0 uses only `confirm_samples`), `overflow_lockout_s` (3600),
 `maximum_range_increases` (10). Set `minimum_range_a: 0.01` to never leave the 10 mA range.

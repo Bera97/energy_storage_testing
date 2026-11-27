@@ -209,7 +209,8 @@ def run_leakage_test(document, *, smu, maximum_voltage_v, maximum_current_a,
     def update_range(reading, index, offset):
         nonlocal range_changed
         previous = ranger.range_a
-        new = ranger.observe(reading.current_a, offset)
+        new = (ranger.initial_step(reading.current_a) if index == 0
+               else ranger.observe(reading.current_a, offset))
         if new is None:
             return
         readback = set_range(smu, channel, new)

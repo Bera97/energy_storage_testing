@@ -66,8 +66,7 @@ execution:
 leakage:
   maximum_duration_s: 600
   schedule:
-    - {until_s: 60, interval_s: 0.5}
-    - {until_s: 600, interval_s: 1}
+    - {until_s: 600, interval_s: 0.5}
   early_stop:
     enabled: false
   report_times_s: [60, 300, 600]

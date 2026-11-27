@@ -383,8 +383,8 @@ def test_analysis_flags_automatic_ranging_and_accepts_legacy_csv(profile, tmp_pa
     assert any("Automatic current ranging" in warning for warning in result["warnings"])
 
 
-def test_default_range_control_waits_one_minute_with_wide_headroom():
-    assert DEFAULTS["confirm_window_s"] == 60.0 and DEFAULTS["headroom"] == 0.2
+def test_default_range_control_waits_thirty_seconds_with_wide_headroom():
+    assert DEFAULTS["confirm_window_s"] == 30.0 and DEFAULTS["headroom"] == 0.2
 def test_step_down_waits_for_the_whole_time_window():
     ranger = controller(confirm_window_s=60)
     ranger.takeover(0.395)
@@ -403,3 +403,22 @@ def test_a_wandering_current_never_steps_below_the_range_it_can_overflow():
     assert [step for step in steps if step] == [0.01]
     quiet = [ranger.observe(1e-5, 0.25 * k) for k in range(3600, 4400)]
     assert ranger.range_a == 1e-4 and all(step < 0.01 for step in quiet if step)
+
+
+def test_the_first_reading_moves_off_the_start_range_without_waiting():
+    ranger = controller(confirm_window_s=60)
+    ranger.takeover(0.395)
+    assert ranger.initial_step(0.0094) == 0.1 and ranger.range_a == 0.1
+    ranger = controller()
+    ranger.takeover(0.395)
+    assert ranger.initial_step(0.395) is None and ranger.range_a == 1.0
+def test_the_first_sample_moves_the_range_off_the_start_range_at_once(profile, tmp_path):
+    recorder = Recorder()
+    rig, holder = make_rig(profile, lambda r, h: reading(r.hold, 0.009))
+    run = tmp_path / "run"
+    result = run_ranging(rig, run, recorder)
+    events = result["range_control"]["events"]
+    assert recorder.calls == [1.0, 0.1]
+    assert [event["action"] for event in events] == ["start", "step_down"]
+    assert events[1]["sample_index"] == 0 and events[1]["offset_s"] == 0.0
+    assert rows_of(run)[1]["after_range_change"] == "1"

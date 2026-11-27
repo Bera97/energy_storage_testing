@@ -45,7 +45,7 @@ def test_default_schedule_meets_requested_sample_count(profile):
     assert [s["sample_count"] for s in schedule["segments"]] == [3600, 56700, 14400, 17280, 5760]
     assert schedule["total_sample_count"] == 97741
     assert 97000 <= schedule["total_sample_count"] <= 99999
-    assert schedule["unused_records"] == 100000 - 97741
+    assert schedule["unused_records"] == 1000000 - 97741
     assert plan["report_times_s"] == [3600.0, 36000.0, 86400.0, 172800.0, 259200.0]
     assert plan["early_stop"] == {"enabled": False}
     assert plan["execution_available"] and not plan["will_connect"]
@@ -60,7 +60,7 @@ def test_sample_times_are_deterministic_and_monotonic(profile):
     assert all(b > a for a, b in zip(times, times[1:]))
 def test_record_budget_is_enforced(profile):
     doc = leakage_profile(profile)
-    doc["leakage"]["schedule"] = [{"until_s": 259200, "interval_s": 1}]
+    doc["leakage"]["schedule"] = [{"until_s": 259200, "interval_s": 0.25}]
     with pytest.raises(ValueError, match="limit"):
         validate_config(doc)
     with pytest.raises(ValueError, match="limit"):
@@ -125,6 +125,12 @@ def test_example_profile_matches_requested_schedule():
     root = Path(__file__).resolve().parents[1]
     doc = load_config(root / "configs/leakage_current_trial_7_8_ch1.yaml")["config"]
     plan = build_leakage_plan(doc)
-    assert plan["schedule"]["total_sample_count"] == 97741
+    assert plan["schedule"]["total_sample_count"] == 518401
     assert plan["maximum_duration_s"] == 259200
     assert plan["early_stop"]["enabled"] is False
+
+
+def test_two_hertz_for_72_hours_fits_the_record_limit(profile):
+    doc = leakage_profile(profile)
+    doc["leakage"]["schedule"] = [{"until_s": 259200, "interval_s": 0.5}]
+    assert build_leakage_plan(doc)["schedule"]["total_sample_count"] == 518401

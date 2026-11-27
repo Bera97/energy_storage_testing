@@ -192,5 +192,5 @@ def test_bench_check_profile_is_valid_and_short():
     root = Path(__file__).resolve().parents[1]
     doc = load_config(root / "configs/leakage_current_bench_check_ch1.yaml")["config"]
     plan = build_leakage_plan(doc)
-    assert plan["schedule"]["total_sample_count"] == 661
+    assert plan["schedule"]["total_sample_count"] == 1201
     assert plan["maximum_duration_s"] == 600 and plan["early_stop"]["enabled"] is False

@@ -13,7 +13,7 @@ RANGE_LADDER = (1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0)
 MODES = ("auto", "step_down")
 DEFAULTS = {
     "mode": "auto", "minimum_range_a": 1e-7, "headroom": 0.2, "confirm_samples": 20,
-    "confirm_window_s": 60.0, "overflow_lockout_s": 3600.0, "maximum_range_increases": 10,
+    "confirm_window_s": 30.0, "overflow_lockout_s": 3600.0, "maximum_range_increases": 10,
 }
 MAXIMUM_CONFIRM_WINDOW_S = 3600.0
 TAKEOVER_HEADROOM = 0.8
@@ -91,6 +91,11 @@ class StepDownRanger:
         if window > 0 and offset_s - self.recent[0][0] < window * (1 - 1e-9):
             return None
         peak = max(value for _, value in self.recent)
+        return self._fit(peak, offset_s)
+    def initial_step(self, current_a):
+        """Move off the start range at once from the first reading, with the normal headroom."""
+        return self._fit(abs(current_a), -math.inf)
+    def _fit(self, peak, offset_s):
         locked = offset_s < self.floor_until_s
         for rung in self.ladder:
             if rung >= self.range_a * (1 - 1e-9):

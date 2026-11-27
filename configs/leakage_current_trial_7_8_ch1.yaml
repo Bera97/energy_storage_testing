@@ -66,11 +66,7 @@ execution:
 leakage:
   maximum_duration_s: 259200
   schedule:
-    - {until_s: 900, interval_s: 0.25}
-    - {until_s: 57600, interval_s: 1}
-    - {until_s: 86400, interval_s: 2}
-    - {until_s: 172800, interval_s: 5}
-    - {until_s: 259200, interval_s: 15}
+    - {until_s: 259200, interval_s: 0.5}
   early_stop:
     enabled: false
   final_window_s: 1800
