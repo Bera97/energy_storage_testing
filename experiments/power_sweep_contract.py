@@ -7,6 +7,24 @@ from experiments.power_planning import build_constant_power_sweep_plan
 from experiments.preconditioning import build_plan
 
 MAXIMUM_RECORDS = 100000
+CONTROLLED_PHASES = ("discharge_cp", "discharge_profile")
+
+
+def control_section(configuration):
+    """The power_control (CP) or profile_control (profile) mapping of a channel profile."""
+    return configuration["profile_control"] if "profile_control" in configuration else configuration["power_control"]
+
+
+def phase_limits(phase):
+    from experiments.constant_power import PowerLimits
+    from experiments.profile_control import ProfileLimits
+    return (ProfileLimits if phase["type"] == "discharge_profile" else PowerLimits)(**phase["controller_limits"])
+
+
+def phase_controller(limits):
+    from experiments.constant_power import ConstantPowerController
+    from experiments.profile_control import ProfileController, ProfileLimits
+    return (ProfileController if isinstance(limits, ProfileLimits) else ConstantPowerController)(limits)
 
 
 class PowerSweepError(RuntimeError):

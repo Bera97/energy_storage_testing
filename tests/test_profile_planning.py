@@ -77,10 +77,10 @@ def test_cli_preview_marks_profile_execution_unavailable(capsys):
     plan = json.loads(capsys.readouterr().out)
     assert plan["execution_available"] is False and plan["offline_analysis_available"] is False
     assert plan["experiment_type"] == "profile_discharge_test"
-def test_cli_dual_preview_marks_every_channel_unavailable(capsys):
+def test_cli_dual_preview_marks_every_channel_available(capsys):
     assert smu.main(["--config", str(CURRENT_CH1), "--config", str(CURRENT_CH2)]) == 0
     plan = json.loads(capsys.readouterr().out)
-    assert [c["execution_available"] for c in plan["channels"]] == [False, False]
+    assert [c["execution_available"] for c in plan["channels"]] == [True, True]
 @pytest.mark.parametrize("extra", [["--execute"], ["--analyze", "some_run"]])
 def test_cli_refuses_profile_execution_and_analysis(extra, capsys):
     assert smu.main(["--config", str(CURRENT_CH1), *extra]) == 1

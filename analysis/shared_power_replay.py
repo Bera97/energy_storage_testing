@@ -18,10 +18,13 @@ from experiments.charge_cv_classifier import VoltageSourceCVClassifier
 from experiments.charge_trace_monitor import ChargeTraceMonitor
 from experiments.discharge_trace_monitor import DischargeTraceMonitor
 from experiments.config import require_charge_monitoring_settings
-from experiments.constant_power import ConstantPowerController, PowerLimits, PowerSample, _number
+from experiments.constant_power import PowerSample, _number
 from experiments.phase_outcome import validate_transport_outcome
 from experiments.power_planning import build_dual_constant_power_sweep_plan
-from experiments.power_sweep_contract import MAXIMUM_RECORDS, build_sequence, digest, read_json, require, same, snapshot, tree_files
+from experiments.power_sweep_contract import (
+    CONTROLLED_PHASES, MAXIMUM_RECORDS, build_sequence, control_section, digest, phase_controller, phase_limits,
+    read_json, require, same, snapshot, tree_files,
+)
 
 MANIFEST = "dual_power_acquisition.json"
 MAX_ANALYSIS_POINTS = 1000000
@@ -178,10 +181,10 @@ def replay_shared_power_acquisition(directory, *, expected_documents=None, colle
                 and channel["next_stage_id"] is None and type(channel["completed_stage_count"]) is int
                 and channel["completed_stage_count"]==len(requests)==len(channel["stages"]),"Incomplete/cross-channel progress.")
         probe=_number(doc["probe_ceilings_a"][str(c)],"probe ceiling")
-        require(probe<=preview["configuration"]["power_control"]["maximum_current_a"],"Probe ceiling differs.")
+        require(probe<=control_section(preview["configuration"])["maximum_current_a"],"Probe ceiling differs.")
         states[c]=dict(preview=preview,progress=channel,requests=requests,position=0,active=None,probe=probe,previous_finish=None)
         for request in requests:
-            if request["phase"]["type"]=="discharge_cp":continue
+            if request["phase"]["type"] in CONTROLLED_PHASES:continue
             prefix=f"channel_{c}/{request['stage_id']}/";expected_files.update(prefix+n for n in ("stage.json","NATIVE_STAGE_COMPLETE"))
             child="rest" if request["phase"]["type"]=="rest" else "phase"
             if child=="phase" or zr.is_measured(request["phase"]):
@@ -239,7 +242,7 @@ def replay_shared_power_acquisition(directory, *, expected_documents=None, colle
                 time=at(data["host_s"]);record=active["record"]
                 require(time<=record["finished_s"] and type(record["journal_last_sequence"]) is int and record["journal_last_sequence"]==index,"Stage finish differs.")
                 same(data["stop_reason"],record["stop_reason"],"Stop reason differs.")
-                if phase["type"]=="discharge_cp":
+                if phase["type"] in CONTROLLED_PHASES:
                     require(active["step"]=="finished" and controller.state=="completed" and data["stop_reason"]=="voltage_min"
                             and record["native_outcome"] is None,"CP phase was not completed by its controller.")
                     same(record["sample_count"],active["count"],"CP sample count differs.");same(record["last_feedback"],active["last_feedback"],"Last paired feedback differs.")
@@ -251,13 +254,13 @@ def replay_shared_power_acquisition(directory, *, expected_documents=None, colle
                 phases.append({"channel":c,"specimen_id":state["preview"]["specimen_id"],"request":snapshot(request),"time_basis":basis,
                                "excluded_probe_count":probe,"excluded_trailing_count":tail,"points":points if collect_samples else []})
                 state["previous_finish"]=record["finished_s"];at(record["finished_s"]);state["position"]+=1;state["active"]=None;continue
-            require(phase["type"]=="discharge_cp","CP event inside native phase.")
+            require(phase["type"] in CONTROLLED_PHASES,"CP event inside native phase.")
             if kind=="probe_armed":
                 require(active["step"]=="arm" and controller is None,"Duplicate/out-of-order probe arm.")
                 time=at(data["host_s"]);setup=data["setup"];same(setup["channel"],c,"Probe channel differs.");same(setup["identity"],identity,"Probe instrument differs.")
                 same(setup["voltage_compliance_v"],phase["controller_limits"]["maximum_voltage_v"],"Probe compliance differs.")
                 require(setup["auto_output_on"] is False,"Probe automatic output-on enabled.")
-                controller=ConstantPowerController(PowerLimits(**phase["controller_limits"]))
+                controller=phase_controller(phase_limits(phase))
                 controller.arm_zero_current_probe(now_s=time,outputs_verified_off=setup["selected_output_off"],current_source_verified=setup["current_source"],
                                                  zero_current_setpoint_a=setup["current_setpoint_a"],maximum_probe_current_a=state["probe"])
                 active.update(controller=controller,step="enable")

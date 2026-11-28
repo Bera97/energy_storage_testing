@@ -342,12 +342,17 @@ class BorrowedPowerChannel:
 
     def __init__(self, owner, channel, limits, probe):
         self.owner, self.channel, self.limits, self.probe_ceiling = owner, channel, limits, probe
+        self.zero_ok = hasattr(limits, "profile_kind")
+        self.polarity_tolerance_a = limits.zero_current_tolerance_a if self.zero_ok else 0.0
         self.prepared = self.enabled = self.stopped = self.power_command_applied = False
         self._fault_frame = self._fault_bracket = None
 
     @property
     def selected(self):
         return self.owner._selected(self.channel)
+
+    def _command_in_range(self, value):
+        return -self.limits.maximum_current_a <= value < 0 or (self.zero_ok and value == 0)
 
     def _configuration(self, active):
         checked = self.owner._checked
@@ -363,7 +368,7 @@ class BorrowedPowerChannel:
             _require(math.isclose(_number(actual, name), expected, rel_tol=1e-9, abs_tol=1e-12), "Selected "+name+" differs.")
         _require(checked(self.selected.get_four_wire) is config["four_wire"], "Selected wiring differs.")
         level = _number(checked(self.selected.get_current_setpoint), "selected current", signed=True, zero=True)
-        _require((-self.limits.maximum_current_a <= level < 0) if self.power_command_applied else level == 0,
+        _require(self._command_in_range(level) if self.power_command_applied else level == 0,
                  "Selected current is not the permitted zero-probe/negative-power setpoint.")
 
     @_endpoint_call
@@ -409,14 +414,14 @@ class BorrowedPowerChannel:
         _require(frame.channel == self.channel and not sample.has_fault and not sample.in_compliance and sample.current_source
                  and self.limits.minimum_voltage_v <= frame.voltage_v <= self.limits.maximum_voltage_v
                  and abs(frame.current_a) <= (self.limits.maximum_current_a if self.power_command_applied else self.probe_ceiling)
-                 and (not self.power_command_applied or frame.current_a <= 0), "Borrowed CP feedback is invalid; paired frame retained on error.")
+                 and (not self.power_command_applied or frame.current_a <= self.polarity_tolerance_a), "Borrowed CP feedback is invalid; paired frame retained on error.")
         return frame
 
     @_endpoint_call
     def set_current(self, current_a):
         _require(self.prepared and self.enabled, "Borrowed CP probe is not active.")
         value = _number(current_a, "CP command", signed=True)
-        _require(-self.limits.maximum_current_a <= value < 0, "CP command must be negative and within phase ceiling.")
+        _require(self._command_in_range(value), "CP command must be negative and within phase ceiling.")
         self._configuration(True)
         self.owner._checked(self.selected.set_current, value)
         self.power_command_applied = True
@@ -426,7 +431,7 @@ class BorrowedPowerChannel:
         _require(self.enabled and self.power_command_applied, "No CP command has been applied.")
         self._configuration(True)
         value = _number(self.owner._checked(self.selected.get_current_setpoint), "CP readback", signed=True)
-        _require(-self.limits.maximum_current_a <= value < 0, "CP readback is outside the permitted negative range.")
+        _require(self._command_in_range(value), "CP readback is outside the permitted negative range.")
         return value
 
     @_endpoint_call

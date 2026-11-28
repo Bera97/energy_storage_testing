@@ -166,6 +166,11 @@ def build_dual_constant_power_sweep_plan(documents, *, maximum_records=100000):
     if not isinstance(documents, (list, tuple)) or len(documents) != 2:
         raise ValueError("Exactly two constant-power profiles are required.")
     plans = [build_constant_power_sweep_plan(doc, maximum_records=maximum_records) for doc in documents]
+    kinds = {plan["experiment_type"] for plan in plans}
+    if len(kinds) != 1:
+        raise ValueError("Both channels must use the same experiment type; do not mix constant-power and profile profiles.")
+    if kinds == {"profile_discharge_test"} and documents[0]["profile"] != documents[1]["profile"]:
+        raise ValueError("Both channels must use the same profile (the profile sections differ).")
     base_plan = build_dual_plan([
         plan["initial_preparation"]["configuration"] for plan in plans
     ], maximum_records=maximum_records)

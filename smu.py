@@ -314,7 +314,7 @@ def _unified_main(arguments):
             ))
             return 0
         power_kinds = ("constant_power_discharge_sweep", "profile_discharge_test")
-        profile_only = documents[0]["experiment"]["type"] == "profile_discharge_test"
+        profile_only = documents[0]["experiment"]["type"] == "profile_discharge_test" and len(documents) == 1
         if any(doc["experiment"]["type"] in power_kinds for doc in documents):
             if len({doc["experiment"]["type"] for doc in documents}) != 1:
                 raise ValueError("Use one or two constant-power profiles; do not mix experiment types.")
@@ -326,7 +326,7 @@ def _unified_main(arguments):
                     )
             if profile_only and (parsed.execute or parsed.analyze is not None):
                 raise ValueError(
-                    "Profile discharge execution and analysis are not implemented yet; use --preview."
+                    "Single-channel profile execution and analysis are not implemented yet; use --preview, or pass two profiles for the dual runner."
                 )
             planner = import_module("experiments.power_planning")
             plan = (

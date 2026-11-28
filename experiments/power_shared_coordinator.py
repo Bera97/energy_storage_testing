@@ -8,11 +8,14 @@ Callbacks are not preemptible. Native output/clock/format ownership remains shar
 from dataclasses import asdict
 import json
 from pathlib import Path
-from experiments.constant_power import ConstantPowerController, PowerLimits, _number
+from experiments.constant_power import _number
 from experiments.power_adapter import PowerFrame
 from experiments.power_planning import build_dual_constant_power_sweep_plan
 from experiments.power_shared_transport import SharedPowerSession
-from experiments.power_sweep_contract import MAXIMUM_RECORDS, build_sequence, require, same, snapshot, tree_files, write_json
+from experiments.power_sweep_contract import (
+    CONTROLLED_PHASES, MAXIMUM_RECORDS, build_sequence, control_section, phase_controller, phase_limits,
+    require, same, snapshot, tree_files, write_json,
+)
 
 MANIFEST = "dual_power_acquisition.json"
 
@@ -41,7 +44,7 @@ def run_shared_power_sweep(owner, directory, *, sleep, maximum_probe_current_a,
     states = {}
     for preview in plan["channels"]:
         c = preview["channel"]
-        require(probes[c] <= preview["configuration"]["power_control"]["maximum_current_a"], "Probe exceeds phase current ceiling.")
+        require(probes[c] <= control_section(preview["configuration"])["maximum_current_a"], "Probe exceeds phase current ceiling.")
         child,requests = build_sequence(preview["configuration"])
         same(child,preview,"Canonical child plan differs.")
         states[c] = dict(channel=c,specimen_id=preview["specimen_id"],requests=requests,position=0,
@@ -75,7 +78,7 @@ def run_shared_power_sweep(owner, directory, *, sleep, maximum_probe_current_a,
             same(owner.session.plan,owner._base_plan,"Base session plan changed during coordination.")
             for state in states.values():
                 lease = state["lease"]
-                if state["record"] is not None and state["record"]["request"]["phase"]["type"] != "discharge_cp" and lease is not None and lease.state == "active":
+                if state["record"] is not None and state["record"]["request"]["phase"]["type"] not in CONTROLLED_PHASES and lease is not None and lease.state == "active":
                     lease.check_deadline()
             for state in states.values():
                 controller = state["controller"]
@@ -129,14 +132,14 @@ def run_shared_power_sweep(owner, directory, *, sleep, maximum_probe_current_a,
                            "journal_first_sequence":sequence,"journal_last_sequence":None,"stop_verified":False}
         state["hard_deadline"] = None if phase["type"]=="rest" else _number(started+phase["maximum_duration_s"],"stage deadline")
         call(emit,"stage_start",state,host_s=started,request=snapshot(request))
-        if phase["type"] != "discharge_cp":
+        if phase["type"] not in CONTROLLED_PHASES:
             state["lease"] = call(owner.borrow_native,c,request,root/f"channel_{c}"/request["stage_id"])
             call(state["lease"].start)
         else:
-            limits = PowerLimits(**phase["controller_limits"])
+            limits = phase_limits(phase)
             state["lease"] = call(owner.borrow,c,limits,maximum_probe_current_a=probes[c])
             setup = call(state["lease"].prepare)
-            controller = ConstantPowerController(limits)
+            controller = phase_controller(limits)
             controller.arm_zero_current_probe(now_s=now(),outputs_verified_off=setup["selected_output_off"],
                 current_source_verified=setup["current_source"],zero_current_setpoint_a=setup["current_setpoint_a"],maximum_probe_current_a=probes[c])
             state["controller"] = controller

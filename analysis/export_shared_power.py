@@ -53,7 +53,7 @@ def _groups(phases):
         if p["scope"]=="condition":grouped.setdefault((p["channel"],p["condition_id"],p["cycle"]),[]).append(p)
     cycles=[]
     for (channel,condition,cycle),rows in sorted(grouped.items()):
-        charge=next(p for p in rows if p["type"]=="charge_cc_cv");discharge=next(p for p in rows if p["type"]=="discharge_cp")
+        charge=next(p for p in rows if p["type"]=="charge_cc_cv");discharge=next(p for p in rows if p["type"] in ("discharge_cp","discharge_profile"))
         ratio=lambda a,b:a/b if a is not None and b is not None and b>0 else None
         cycles.append({"channel":channel,"specimen_id":discharge["specimen_id"],"condition_id":condition,"cycle":cycle,
             "condition_index":discharge["condition_index"],"repeat_index":discharge["repeat_index"],"power_w":discharge["power_w"],
@@ -154,9 +154,9 @@ def validate_shared_power_analysis(directory):
                     points.append({k:(None if row[k]=="" else int(row[k]) if k=="status" else float(row[k])) for k in POINTS})
             kind=request["phase"]["type"]
             basis=("within_trace_instrument_timestamp" if kind in ("charge_cc_cv","discharge_cc") else
-                   "host_read_bracket_midpoint_estimate" if kind=="discharge_cp" else
+                   "host_read_bracket_midpoint_estimate" if kind in ("discharge_cp","discharge_profile") else
                    "relative_host_read_bracket_midpoint_estimate" if request["phase"].get("rest_mode")=="zero_current_logging" else "unmeasured_outputs_off_rest")
-            same(phase["time_basis"],basis,"Derived time basis differs.");same(phase["excluded_probe_count"],1 if kind=="discharge_cp" else 0,"Derived probe exclusion differs.")
+            same(phase["time_basis"],basis,"Derived time basis differs.");same(phase["excluded_probe_count"],1 if kind in ("discharge_cp","discharge_profile") else 0,"Derived probe exclusion differs.")
             require(type(phase["excluded_trailing_count"]) is int and phase["excluded_trailing_count"]>=0
                     and (kind in ("charge_cc_cv","discharge_cc") or phase["excluded_trailing_count"]==0),"Derived trailing exclusion differs.")
             require(basis!="unmeasured_outputs_off_rest" or points==[],"Unmeasured rest contains invented samples.")
@@ -170,7 +170,7 @@ def validate_shared_power_analysis(directory):
                 else:
                     a=_number(point["host_read_started_s"],"derived read before",zero=True);b=_number(point["host_read_finished_s"],"derived read after",zero=True)
                     require(a<=b and point["time_s"]==a+(b-a)/2,"Derived midpoint differs.")
-                    if kind=="discharge_cp":require(reading.current_source and not reading.in_compliance and reading.current_a<=0,"Derived CP flags/polarity differ.")
+                    if kind in ("discharge_cp","discharge_profile"):require(reading.current_source and not reading.in_compliance and reading.current_a<=request["phase"]["controller_limits"].get("zero_current_tolerance_a",0.0),"Derived CP flags/polarity differ.")
             expected_phase=_phase({"request":request,"points":points,**{k:phase[k] for k in
                                    ("channel","specimen_id","time_basis","excluded_probe_count","excluded_trailing_count")}})
             same(expected_phase,phase,"Derived calculations differ.");recalculated.append(expected_phase)
