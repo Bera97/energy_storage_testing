@@ -14,7 +14,7 @@ from analysis.analyze_power_sweep import (
     ANALYSIS_VERSION, SAMPLE_FIELDS, TOTALS, _analyze, _conditions, _cycles, _integrate,
     _preflight, _verify_inventory,
 )
-from experiments.power_sweep_contract import build_sequence, digest, read_json, require, same, write_json
+from experiments.power_sweep_contract import CONTROLLED_PHASES, build_sequence, digest, read_json, require, same, write_json
 
 PHASE_FIELDS = ("stage_id", "scope", "condition_id", "condition_index", "repeat_index", "power_w",
                 "phase_index", "cycle", "type", "follows", "time_basis", "sample_count", "interval_count",
@@ -126,6 +126,9 @@ def _validate(directory):
     for request in requests:
         prefix, phase = request["stage_id"], request["phase"]
         source_expected.add(prefix + "/stage.json")
+        if phase["type"] == "discharge_profile":
+            source_expected.update(prefix + "/power/" + n for n in
+                ("power_phase.json", "power_events.jsonl", "power_samples.csv", "POWER_PHASE_COMPLETE"))
         if phase["type"] == "discharge_cp":
             source_expected.update(prefix + "/power/" + n for n in
                 ("power_phase.json", "power_events.jsonl", "power_samples.csv", "POWER_PHASE_COMPLETE"))
@@ -157,7 +160,7 @@ def _validate(directory):
         for key in ("type", "phase_index", "cycle"):
             same(phase[key], request["phase"][key], "Analysis phase descriptor differs.")
         same(phase["follows"], request["phase"].get("follows"), "Rest role differs.")
-        same(phase["excluded_probe_count"], 1 if phase["type"] == "discharge_cp" else 0, "Probe exclusion count differs.")
+        same(phase["excluded_probe_count"], 1 if phase["type"] in CONTROLLED_PHASES else 0, "Probe exclusion count differs.")
         require(type(phase["excluded_trailing_cc_count"]) is int and phase["excluded_trailing_cc_count"] >= 0,
                 "Invalid CC trailing-record exclusion count.")
         require(phase["type"] in ("charge_cc_cv", "discharge_cc") or phase["excluded_trailing_cc_count"] == 0,
@@ -172,7 +175,7 @@ def _validate(directory):
         points = []
         is_cc = phase["type"] in ("charge_cc_cv", "discharge_cc")
         basis = ("within_trace_instrument_timestamp" if is_cc else "host_read_bracket_midpoint_estimate"
-                 if phase["type"] == "discharge_cp" else "relative_host_read_bracket_midpoint_estimate"
+                 if phase["type"] in CONTROLLED_PHASES else "relative_host_read_bracket_midpoint_estimate"
                  if request["phase"].get("rest_mode") == "zero_current_logging" else "unmeasured_outputs_off_rest")
         same(phase["time_basis"], basis, "Derived time basis differs.")
         for index, row in enumerate(rows):
@@ -180,7 +183,7 @@ def _validate(directory):
             point = {k: float(row[k]) for k in ("time_s", "raw_instrument_timestamp_s", "voltage_v", "current_a")}
             require(all(math.isfinite(v) for v in point.values()), "Nonfinite derived sample.")
             point.update(record_index=int(row["record_index"]), status=int(row["status"]))
-            require(point["record_index"] == index + (1 if phase["type"] == "discharge_cp" else 0), "Derived record index mismatch.")
+            require(point["record_index"] == index + (1 if phase["type"] in CONTROLLED_PHASES else 0), "Derived record index mismatch.")
             for key in ("host_read_started_s", "host_read_finished_s"):
                 point[key] = None if row[key] == "" else float(row[key])
             if is_cc:
@@ -196,6 +199,10 @@ def _validate(directory):
             if phase["type"] == "discharge_cp":
                 require(reading.current_source and not reading.in_compliance and reading.current_a <= 0,
                         "Derived CP source/polarity/compliance differs.")
+            elif phase["type"] == "discharge_profile":
+                require(reading.current_source and not reading.in_compliance
+                        and reading.current_a <= request["phase"]["controller_limits"]["zero_current_tolerance_a"],
+                        "Derived profile source/polarity/compliance differs.")
             points.append(point)
         require(basis != "unmeasured_outputs_off_rest" or not points, "Unmeasured OFF rest cannot contain samples.")
         same(phase["first_sample_time_s"], points[0]["time_s"] if points else None, "First sample time differs.")

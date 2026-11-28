@@ -314,7 +314,7 @@ def _unified_main(arguments):
             ))
             return 0
         power_kinds = ("constant_power_discharge_sweep", "profile_discharge_test")
-        profile_only = documents[0]["experiment"]["type"] == "profile_discharge_test" and len(documents) == 1
+        profile_only = False  # profile execution and analysis exist for one and two channels
         if any(doc["experiment"]["type"] in power_kinds for doc in documents):
             if len({doc["experiment"]["type"] for doc in documents}) != 1:
                 raise ValueError("Use one or two constant-power profiles; do not mix experiment types.")

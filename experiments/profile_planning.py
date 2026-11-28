@@ -101,7 +101,7 @@ def build_profile_plan(document, *, maximum_records=100000):
         configuration=deepcopy(document), profile_preview_schema_version=1,
         ordering="initial_cc_discharge_then_cycles_of_charge_rest_profile_discharge_rest",
         limitations=[
-            "Planning/preview only; profile execution and analysis are not implemented yet.",
+            "Planning/preview; execution runs only through the supervised CLI runners and is not hardware-qualified.",
             "The profile repeats until the discharge cutoff voltage or discharge.maximum_duration_s.",
             "Steps are whole seconds and are evaluated once per update interval (at most 1 s).",
             "Host setpoint/acquisition integration, physical operating envelope and timing are unqualified.",

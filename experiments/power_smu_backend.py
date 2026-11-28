@@ -66,6 +66,8 @@ class B2902BPowerBackend:
         self._status_error_type = status_error_type or ()
         self._spot = None
         self.limits = None
+        self.zero_ok = False
+        self.polarity_tolerance_a = 0.0
         self.prepared = False
         self.enabled = False
         self.power_command_applied = False
@@ -166,6 +168,8 @@ class B2902BPowerBackend:
                 raise PowerTransportError("Automatic output-on did not report OFF.")
         self._both_off()
         self.limits = limits
+        self.zero_ok = hasattr(limits, "profile_kind")
+        self.polarity_tolerance_a = limits.zero_current_tolerance_a if self.zero_ok else 0.0
         self.prepared = True
         return dict(channel=self.channel, selected_output_off=True, current_source=True,
                     auto_output_on=False, current_setpoint_a=float(level),
@@ -223,7 +227,7 @@ class B2902BPowerBackend:
                 or not sample.current_source
                 or not self.limits.minimum_voltage_v <= frame.voltage_v <= self.limits.maximum_voltage_v
                 or abs(frame.current_a) > self.limits.maximum_current_a
-                or (self.power_command_applied and frame.current_a > 0)):
+                or (self.power_command_applied and frame.current_a > self.polarity_tolerance_a)):
             self.failed = True
         return frame
 
@@ -231,6 +235,11 @@ class B2902BPowerBackend:
     def set_current(self, current_a):
         self._usable(prepared=True, active=True)
         value = _number(current_a, "power current command", signed=True)
+        if self.zero_ok and value == 0:
+            self._active_readbacks()
+            self._checked(self.selected.set_current, value)
+            self.power_command_applied = True
+            return
         if not -self.limits.maximum_current_a <= value < 0:
             raise ValueError("Power commands must be negative and within the phase current ceiling.")
         self._active_readbacks()
@@ -242,6 +251,8 @@ class B2902BPowerBackend:
         self._usable(prepared=True, active=True)
         self._active_readbacks()
         value = _number(self._checked(self.selected.get_current_setpoint), "current readback", signed=True)
+        if self.zero_ok and value == 0:
+            return value
         if not -self.limits.maximum_current_a <= value < 0:
             raise PowerTransportError("Power setpoint readback exceeds the permitted negative-current range.")
         return value

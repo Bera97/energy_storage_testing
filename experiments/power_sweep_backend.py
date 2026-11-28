@@ -6,7 +6,7 @@ Fake factory injections are trusted tests, not a physical-proof/security boundar
 """
 from pathlib import Path
 from experiments.config import require_charge_monitoring_settings
-from experiments.constant_power import PowerLimits, _number
+from experiments.constant_power import _number
 from experiments.power_adapter import _HostClock
 from experiments.power_smu_backend import B2902BPowerBackend
 from experiments.recorded_power_phase import run_recorded_power_phase
@@ -14,7 +14,8 @@ from experiments.recorded_phase_executor import RecordedPhaseExecutor
 from experiments.rest_outputs_off import rest_outputs_off
 from experiments import zero_current_rest as zrest
 from experiments.power_sweep_contract import (
-    MAXIMUM_RECORDS, base_phase, build_sequence, require, same, snapshot, tree_files, write_json,
+    CONTROLLED_PHASES, MAXIMUM_RECORDS, base_phase, build_sequence, control_section, phase_limits, require, same,
+    snapshot, tree_files, write_json,
 )
 
 
@@ -29,7 +30,7 @@ class RecordedPowerSweepBackend:
         require(all(callable(fn) for fn in (open_session, clock, sleep, active_executor_factory,
                                            power_backend_factory)), "Explicit callable dependencies required.")
         self.probe_ceiling = _number(maximum_probe_current_a, "probe ceiling")
-        require(self.probe_ceiling <= document["power_control"]["maximum_current_a"], "Probe exceeds power-control ceiling.")
+        require(self.probe_ceiling <= control_section(document)["maximum_current_a"], "Probe exceeds power-control ceiling.")
         self.poll_interval_s = _number(poll_interval_s, "poll interval")
         self.rest_poll_interval_s = _number(rest_poll_interval_s, "rest poll interval")
         self.settings = snapshot(self.plan["execution_settings"])
@@ -114,12 +115,12 @@ class RecordedPowerSweepBackend:
                 require(selected.get_output_state() is False, "New stage requires both outputs OFF.")
                 smu.check_errors()
             phase = request["phase"]
-            if phase["type"] == "discharge_cp":
+            if phase["type"] in CONTROLLED_PHASES:
                 instrument = self.configuration["instrument"]
                 transport = self.power_backend_factory(smu, channel=instrument["channel"], four_wire=instrument["four_wire"],
                     nplc=instrument["nplc"], output_authorized=True, **self.settings)
                 try:
-                    outcome = run_recorded_power_phase(PowerLimits(**phase["controller_limits"]), directory / "power",
+                    outcome = run_recorded_power_phase(phase_limits(phase), directory / "power",
                         backend=transport, clock=self.clock, sleep=self.sleep, channel=instrument["channel"],
                         maximum_probe_current_a=self.probe_ceiling, maximum_samples=MAXIMUM_RECORDS,
                         specimen_id=self.plan["specimen_id"], configuration_snapshot=self.document, execute_requested=True)

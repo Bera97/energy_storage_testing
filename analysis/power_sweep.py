@@ -18,7 +18,8 @@ from experiments.charge_controller import charge_stop_reason
 from experiments.constant_power import _number
 from experiments.phase_outcome import validate_transport_outcome
 from experiments.power_sweep_contract import (
-    MAXIMUM_RECORDS, base_phase, build_sequence, completion_text, digest, read_json, require, same, tree_files,
+    CONTROLLED_PHASES, MAXIMUM_RECORDS, base_phase, build_sequence, completion_text, control_section, digest,
+    read_json, require, same, tree_files,
 )
 
 
@@ -57,7 +58,7 @@ def _stage(directory, request, configuration, sweep_configuration, policy, plan)
     same(doc["files"], files, "Stage file digests changed.")
     phase, evidence = request["phase"], doc["evidence"]
     require(isinstance(evidence, dict), "Missing stage evidence.")
-    if phase["type"] == "discharge_cp":
+    if phase["type"] in CONTROLLED_PHASES:
         same(evidence, {"kind": "power", "directory": "power"}, "Wrong power reference.")
         checked = validate_power_phase(root / "power")
         require(checked["valid"] is True, "Power phase: " + "; ".join(checked["errors"]))
@@ -197,7 +198,7 @@ def _sweep(directory):
     same(doc["requests"], requests, "Stored sequence differs from canonical configuration.")
     policy = doc["execution_policy"]
     same(sorted(policy), ["maximum_probe_current_a", "maximum_records", "session_policy"], "Unexpected policy fields.")
-    require(_number(policy["maximum_probe_current_a"], "probe ceiling") <= doc["configuration"]["power_control"]["maximum_current_a"], "Invalid probe ceiling.")
+    require(_number(policy["maximum_probe_current_a"], "probe ceiling") <= control_section(doc["configuration"])["maximum_current_a"], "Invalid probe ceiling.")
     same(policy["maximum_records"], MAXIMUM_RECORDS, "Unsupported record budget.")
     require(policy["session_policy"] == "new_owned_session_per_stage", "Unsupported session policy.")
     references = doc["stages"]

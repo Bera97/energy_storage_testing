@@ -7,7 +7,7 @@ from analysis.power_sweep import validate_power_sweep, validate_power_sweep_stag
 from experiments.constant_power import _number
 from experiments.power_sweep_backend import RecordedPowerSweepBackend
 from experiments.power_sweep_contract import (
-    build_sequence, completion_text, digest, require, same, snapshot, write_json,
+    build_sequence, completion_text, control_section, digest, require, same, snapshot, write_json,
 )
 
 
@@ -24,7 +24,7 @@ def run_recorded_power_sweep(document, directory, *, backend, execute_requested=
     same(backend.configuration, plan["initial_preparation"]["configuration"], "Backend preparation configuration differs.")
     same(backend.settings, plan["execution_settings"], "Backend execution settings differ.")
     probe = _number(backend.probe_ceiling, "probe ceiling")
-    require(probe <= configuration["power_control"]["maximum_current_a"], "Probe exceeds configured ceiling.")
+    require(probe <= control_section(configuration)["maximum_current_a"], "Probe exceeds configured ceiling.")
     same(backend.policy, {"maximum_probe_current_a": probe, "maximum_records": 100000,
                          "session_policy": "new_owned_session_per_stage"}, "Backend execution policy differs.")
     root = Path(directory)

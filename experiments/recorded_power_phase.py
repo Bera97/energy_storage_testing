@@ -1,7 +1,7 @@
 """Internal recorded driver-contract phase; no CLI dispatch or connection factory."""
 import json
 from pathlib import Path
-from experiments.constant_power import ConstantPowerController, PowerLimits, _number
+from experiments.constant_power import PowerLimits, _number
 from experiments.power_adapter import _HostClock, PowerAdapterError
 from experiments.power_smu_backend import B2902BPowerBackend
 from recording.power_phase import PowerPhaseRecording
@@ -57,7 +57,8 @@ def run_recorded_power_phase(limits, directory, *, backend, clock, sleep,
     if directory.exists():
         raise FileExistsError("Refusing to overwrite existing power-phase evidence.")
     host = _HostClock(clock)
-    controller = ConstantPowerController(limits)
+    from experiments.power_sweep_contract import phase_controller
+    controller = phase_controller(limits)
     recorder = None
     failure = None
     outcome = {

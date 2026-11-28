@@ -72,19 +72,19 @@ def test_invalid_profiles_are_rejected(change):
         validate_config(broken)
     with pytest.raises(ValueError):
         build_constant_power_sweep_plan(broken)
-def test_cli_preview_marks_profile_execution_unavailable(capsys):
+def test_cli_preview_marks_profile_execution_available(capsys):
     assert smu.main(["--config", str(CURRENT_CH1)]) == 0
     plan = json.loads(capsys.readouterr().out)
-    assert plan["execution_available"] is False and plan["offline_analysis_available"] is False
+    assert plan["execution_available"] is True and plan["offline_analysis_available"] is True
     assert plan["experiment_type"] == "profile_discharge_test"
 def test_cli_dual_preview_marks_every_channel_available(capsys):
     assert smu.main(["--config", str(CURRENT_CH1), "--config", str(CURRENT_CH2)]) == 0
     plan = json.loads(capsys.readouterr().out)
     assert [c["execution_available"] for c in plan["channels"]] == [True, True]
-@pytest.mark.parametrize("extra", [["--execute"], ["--analyze", "some_run"]])
-def test_cli_refuses_profile_execution_and_analysis(extra, capsys):
+@pytest.mark.parametrize("extra", [["--analyze", "some_run"]])
+def test_cli_single_profile_analysis_reports_a_missing_run(extra, capsys):
     assert smu.main(["--config", str(CURRENT_CH1), *extra]) == 1
-    assert "not implemented" in capsys.readouterr().err
+    assert "No recorded CP run" in capsys.readouterr().err
 def test_cli_refuses_mixing_profile_and_cp_profiles(capsys):
     assert smu.main(["--config", str(CURRENT_CH1), "--config", str(CP_CH1)]) == 1
     assert "mix" in capsys.readouterr().err

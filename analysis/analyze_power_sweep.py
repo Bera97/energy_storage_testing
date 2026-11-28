@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 import statistics
 from analysis.energy_charge import calculate_energy_charge
 from analysis.power_sweep import validate_power_sweep
-from experiments.power_sweep_contract import digest, read_json, require, snapshot
+from experiments.power_sweep_contract import CONTROLLED_PHASES, digest, read_json, require, snapshot
 
 ANALYSIS_VERSION = 1
 TOTALS = ("signed_charge_mah", "positive_charge_mah", "negative_charge_mah",
@@ -107,11 +107,11 @@ def _points(stage, rows, root, inventory):
             time = raw
             record = int(row["record_index"])
         else:
-            before = float(row["host_read_started_s"] if phase["type"] == "discharge_cp" else row["host_before_s"])
-            after = float(row["host_read_finished_s"] if phase["type"] == "discharge_cp" else row["host_after_s"])
-            raw = float(row["raw_instrument_timestamp_s"] if phase["type"] == "discharge_cp" else row["instrument_timestamp_s"])
+            before = float(row["host_read_started_s"] if phase["type"] in CONTROLLED_PHASES else row["host_before_s"])
+            after = float(row["host_read_finished_s"] if phase["type"] in CONTROLLED_PHASES else row["host_after_s"])
+            raw = float(row["raw_instrument_timestamp_s"] if phase["type"] in CONTROLLED_PHASES else row["instrument_timestamp_s"])
             time = before + (after - before) / 2
-            record = int(row["record_index"]) if phase["type"] == "discharge_cp" else index
+            record = int(row["record_index"]) if phase["type"] in CONTROLLED_PHASES else index
         points.append({"record_index": record, "time_s": time, "raw_instrument_timestamp_s": raw,
                        "host_read_started_s": before, "host_read_finished_s": after,
                        "voltage_v": float(row["voltage_v"]), "current_a": float(row["current_a"]), "status": int(row["status"])})
@@ -142,7 +142,7 @@ def _phase(root, stage, inventory):
     warnings = []
     if not has_interval:
         warnings.append("No observed integration interval; integrated totals are null, not measured zero.")
-    if phase["type"] == "discharge_cp":
+    if phase["type"] in CONTROLLED_PHASES:
         warnings.append("Probe and command-to-first-loaded-sample coverage excluded; host midpoint time is an estimate.")
     if phase["type"] == "rest":
         warnings.append("Rest data, when measured, are SMU-terminal quantities, not internal self-discharge.")
@@ -181,7 +181,7 @@ def _cycles(phases):
     rows = []
     for (condition, cycle), group in groups.items():
         charge = next(p for p in group if p["type"] == "charge_cc_cv")
-        discharge = next(p for p in group if p["type"] == "discharge_cp")
+        discharge = next(p for p in group if p["type"] in CONTROLLED_PHASES)
         row = {k: discharge[k] for k in ("condition_index", "repeat_index", "power_w")}
         row.update(condition_id=condition, cycle=cycle, charge_stage_id=charge["stage_id"], discharge_stage_id=discharge["stage_id"],
             charge_recorded_span_s=charge["recorded_span_s"], discharge_recorded_span_s=discharge["recorded_span_s"],

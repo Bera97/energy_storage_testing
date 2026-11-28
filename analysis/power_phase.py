@@ -12,6 +12,7 @@ import json
 import math
 from pathlib import Path
 from experiments.constant_power import ConstantPowerController, PowerLimits, _number
+from experiments.profile_control import ProfileController, ProfileLimits
 from experiments.power_adapter import PowerFrame, _validate_setup
 from recording.power_phase import FIELDS, marker_text
 
@@ -97,7 +98,7 @@ def _validate(directory):
     _require(metadata["timestamp_basis"] == "host_read_brackets; raw instrument timestamps retained unmapped"
              and metadata["freshness_basis"] == "backend fresh paired-read contract; not independently verified",
              "Unsupported timestamp/freshness contract.")
-    limits = PowerLimits(**metadata["limits"])
+    limits = (ProfileLimits if "profile_kind" in metadata["limits"] else PowerLimits)(**metadata["limits"])
     channel = _integer(metadata["channel"], "channel", 1)
     _require(channel in (1, 2), "Invalid channel.")
     specimen = metadata["specimen_id"]
@@ -143,7 +144,7 @@ def _validate(directory):
              and parts[2].strip() == instrument["expected_serial"], "Setup identity differs from saved instrument.")
     _require(setup.get("four_wire") is instrument["four_wire"], "Setup sensing differs from saved instrument.")
     _require(math.isclose(_number(setup.get("nplc"), "setup NPLC"), instrument["nplc"], rel_tol=1e-9, abs_tol=1e-12), "Setup NPLC differs.")
-    controller = ConstantPowerController(limits)
+    controller = (ProfileController if isinstance(limits, ProfileLimits) else ConstantPowerController)(limits)
     armed = take("controller_armed")
     controller.arm_zero_current_probe(now_s=armed["host_time_s"], outputs_verified_off=True,
                                      current_source_verified=True, zero_current_setpoint_a=setup["current_setpoint_a"],
