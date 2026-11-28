@@ -130,6 +130,9 @@ def validate_config(document):
     if isinstance(experiment, dict) and experiment.get("type") == "leakage_current_test":
         from experiments.leakage_planning import validate_leakage_test
         return validate_leakage_test(document)
+    if isinstance(experiment, dict) and experiment.get("type") == "profile_discharge_test":
+        from experiments.profile_planning import validate_profile_discharge_test
+        return validate_profile_discharge_test(document)
     if isinstance(experiment, dict) and experiment.get("type") == "constant_power_discharge_sweep":
         from experiments.power_planning import validate_constant_power_sweep
         return validate_constant_power_sweep(document)

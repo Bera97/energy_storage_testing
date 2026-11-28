@@ -313,9 +313,10 @@ def _unified_main(arguments):
                 indent=2, allow_nan=False,
             ))
             return 0
-        power_kind = "constant_power_discharge_sweep"
-        if any(doc["experiment"]["type"] == power_kind for doc in documents):
-            if not all(doc["experiment"]["type"] == power_kind for doc in documents):
+        power_kinds = ("constant_power_discharge_sweep", "profile_discharge_test")
+        profile_only = documents[0]["experiment"]["type"] == "profile_discharge_test"
+        if any(doc["experiment"]["type"] in power_kinds for doc in documents):
+            if len({doc["experiment"]["type"] for doc in documents}) != 1:
                 raise ValueError("Use one or two constant-power profiles; do not mix experiment types.")
             if parsed.execute:
                 if parsed.analyze is not None and any(
@@ -323,6 +324,10 @@ def _unified_main(arguments):
                     raise ValueError(
                         "Set output.analysis_directory in every CP profile to use --analyze."
                     )
+            if profile_only and (parsed.execute or parsed.analyze is not None):
+                raise ValueError(
+                    "Profile discharge execution and analysis are not implemented yet; use --preview."
+                )
             planner = import_module("experiments.power_planning")
             plan = (
                 planner.build_constant_power_sweep_plan(documents[0])
@@ -350,9 +355,9 @@ def _unified_main(arguments):
                 return _unified_power_analyze(documents,parsed.analyze)
             single_channel = len(documents) == 1
             for preview in (plan,*plan.get("channels",[])):
-                preview["offline_analysis_available"] = True
-                preview["execution_available"] = True
-                preview["limitations"] = [
+                preview["offline_analysis_available"] = not profile_only
+                preview["execution_available"] = not profile_only
+                preview["limitations"] = list(preview.get("limitations", [])) if profile_only else [
                     (
                         "Supervised experimental single-channel execution via --execute; "
                         "physical qualification is not established."

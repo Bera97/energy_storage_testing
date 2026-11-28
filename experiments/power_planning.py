@@ -79,6 +79,10 @@ def validate_constant_power_sweep(document):
 
 
 def build_constant_power_sweep_plan(document, *, maximum_records=100000):
+    if isinstance(document, dict) and isinstance(document.get("experiment"), dict) and (
+            document["experiment"].get("type") == "profile_discharge_test"):
+        from experiments.profile_planning import build_profile_plan
+        return build_profile_plan(document, maximum_records=maximum_records)
     from experiments.run_live import execution_preview
     from experiments.settings import settings_for, require_ceilings
     base, limits = _base(document)
